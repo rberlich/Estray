@@ -11,7 +11,7 @@ _Two payloads have been implemented:_
 
 Varying the vector size or the sleep time may help to calculate possible speedups under different scenarios, and might be useful for finding more efficient ways of using Boost.Beast and Boost.Serialization as well as exchanging larger workloads.
 
-The code has been tested with a number of client systems together running up to 500 Websocket clients, each accessing the same octacore Ryzen system for the server. The machines are connected by a fast network, but are located in different data centers.
+The code has been tested with a number of client machines jointly running up to 500 Websocket clients, each accessing the same octacore Ryzen system representing the server. The machines are connected by a fast network, but are located in different data centers.
 
 The code is made available under the terms of the Boost Software License in version 1.0 in the hope that it
 
