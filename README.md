@@ -22,13 +22,18 @@ See each file for the licensing information.
 
 To get started, on a single Linux machine, call `Estray` without arguments (this will be the server) and with the argument `--client` in another shell. This will create a client-server communication using the `container_payload` and a single client. See the `scripts/startClients.sh` script for information on how to start multiple clients. The command-line option `--help` will show you additional options.
 
-*PLEASE DO NOTE THAT THE CODE WILL CONTAIN BUGS. USE AT YOUR OWN RISK.*
+_Open Questions:_
+
+* The current "protocol-state" (such as a message to the server, that the client expects a task -- see the `enum class payload_command` in `misc.hpp`) is currently stored in the payload itself, for simplicity reasons. This way it can be easily serialized along with the payload, which makes the code easier. Another possibility would be to "hide" this in the buffer. On the side of the sender, this can be done using "gather-write". On the side of the recipient, however, some knowledge about the state is needed (such as: this is an enum class based on a specific integer type). I would be interested in suggestions on how to "hide" this state in the websocket message without having to amend the buffer and without storing the state in the payload. A seperate transfer would be inefficient.
+* The server-sessions need to interact with the server-object (e.g. check for stop-conditions, get payload objects from the queue held in the server object, ...). The necessary callbacks are handed to the session-constructors and are stored in the session object. This works o.k., but I wonder whether there are cleaner ways to do this (e.g. Boost.Signal2 ?)
 
 _Caveats:_
 
 * As the focus of this testbed is on Boost.Beast and Boost.Serialization and it is not possible to add std::shared_ptr-objects to a Boost.Lockfree queue, payload items are addressed via raw pointers, so Estray has some "raw" new and delete-calls.
 * The code has so far only been tested on Ubuntu 17.10, using g++ 7.2.0 and Boost 1.66 (which is the first version to ship with Boost.Beast). It compiles with Clang on MacOS X 10.13.2 but has not been tested there.
 * No attempt has been made to compile the code on MS Windows so far.
+
+*PLEASE DO NOTE THAT THE CODE WILL CONTAIN BUGS. USE AT YOUR OWN RISK.*
 
 _Thanks:_
 The author would like to thank Vinnie Falco and Robert Ramey for the hard work they put into Boost.Beast and Boost.Serialization!
