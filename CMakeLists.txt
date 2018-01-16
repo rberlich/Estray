@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(Evaluator)
+project(Estray)
 
 set(BOOST_ROOT /opt/boost)
 find_package(
@@ -31,9 +31,9 @@ set(EXEC_SOURCE_FILES
     payload.cpp
 )
 
-add_executable(Evaluator ${EXEC_SOURCE_FILES})
+add_executable(Estray ${EXEC_SOURCE_FILES})
 
 TARGET_LINK_LIBRARIES(
-    Evaluator
+    Estray
     ${Boost_LIBRARIES}
 )
