@@ -67,7 +67,7 @@ const std::string    DEFAULTHOST = "127.0.0.1"; // localhost // NOLINT
 
 /******************************************************************************************/
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
 	bool           is_client = false;
 	payload_type   pType = DEFAULTPAYLOADTYPE;
 	double         sleep_time = DEFAULTSLEEPTIME;

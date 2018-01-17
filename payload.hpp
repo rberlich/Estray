@@ -103,7 +103,7 @@ class payload_base {
 
 public:
 	 payload_base() = default;
-	 payload_base(payload_command);
+	 explicit payload_base(payload_command);
 	 virtual ~payload_base() = default;
 	 payload_base(const payload_base&) = default;
 
@@ -149,7 +149,7 @@ class command_payload : public payload_base
 
 public:
 	 command_payload() = default;
-	 command_payload(payload_command);
+	 explicit command_payload(payload_command);
 	 ~command_payload() override = default;
 	 command_payload(const command_payload&) = default;
 

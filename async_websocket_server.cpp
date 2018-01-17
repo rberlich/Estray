@@ -714,10 +714,10 @@ std::string async_websocket_server_session::process_request() {
 		} break;
 
 		case payload_command::RESULT: {
+#ifdef DEBUG
 			// Elevate the pointer to a processible_payload
 			auto *pp_ptr = dynamic_cast<processible_payload *>(plb_ptr);
-
-#ifdef DEBUG
+			// Check that work was indeed done
 			if(!pp_ptr->is_processed()) {
 				throw std::runtime_error("async_websocket_server_session::process_request(): Returned payload is unprocessed");
 			}
