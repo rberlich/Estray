@@ -108,6 +108,8 @@ class async_websocket_client final
 	 using resolver = boost::asio::ip::tcp::resolver;
 	 using socket = boost::asio::ip::tcp::socket;
 	 using close_code = boost::beast::websocket::close_code;
+	 using frame_type = boost::beast::websocket::frame_type;
+	 using string_view = boost::beast::string_view;
 
 public:
 	 //--------------------------------------------------------------
@@ -145,6 +147,9 @@ private:
 
 	 void do_close(boost::beast::websocket::close_code);
 
+	 /** @brief Callback for control frames */
+	 std::function<void(boost::beast::websocket::frame_type, boost::beast::string_view)> f_when_control_frame_arrived;
+
 	 //--------------------------------------------------------------
 	 // Data
 
@@ -163,6 +168,8 @@ private:
 
 	 boost::beast::websocket::close_code m_close_code
 		 = boost::beast::websocket::close_code::normal; ///< Holds the close code when terminating the connection
+
+	 command_container m_command_container{payload_command::NONE, nullptr}; ///< Holds the current command and payload (if any)
 
 	 //--------------------------------------------------------------
 };
@@ -191,8 +198,8 @@ public:
 		 , std::function<void(bool)> /* sign_on */
 	 );
 
-	 // The destructor -- mainly closes down the connection cleanly
-	 ~async_websocket_server_session();
+	 // The destructor
+	 ~async_websocket_server_session() = default;
 
 	 // Initiates all communication and processing
 	 void async_start_run();
@@ -246,6 +253,8 @@ private:
 	 boost::asio::steady_timer m_timer;
 	 std::atomic<ping_state> m_ping_state{ping_state::CONNECTION_IS_ALIVE};
 	 const boost::beast::websocket::ping_data m_ping_data{};
+
+	 command_container m_command_container{payload_command::NONE, nullptr}; ///< Holds the current command and payload (if any)
 
 	 std::function<bool()> m_check_stopped;
 	 boost::beast::websocket::close_code m_close_code
@@ -302,10 +311,11 @@ private:
 	 void when_accepted(error_code);
 
 	 bool getNextPayloadItem(payload_base*&);
-	 bool check_server_stopped() const;
 
 	 void container_payload_producer(std::size_t);
 	 void sleep_payload_producer(double);
+
+	 bool server_stopped() const;
 
 	 // --------------------------------------------------------------
 	 // Data and Queues

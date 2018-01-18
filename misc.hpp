@@ -66,7 +66,7 @@
 /******************************************************************************************/
 
 void set_transfer_mode(boost::beast::websocket::stream<boost::asio::ip::tcp::socket>&);
-const std::chrono::seconds DEFAULTPINGINTERVAL = std::chrono::seconds(10); // NOLINT
+const std::chrono::seconds DEFAULTPINGINTERVAL = std::chrono::seconds(5); // NOLINT
 
 /** @brief A basetype used for all enums in the Evaluator */
 using ENUMBASETYPE = unsigned int;
@@ -78,6 +78,7 @@ enum class payload_command: ENUMBASETYPE {
   , COMPUTE = 2
   , RESULT = 3
   , ERROR = 4
+  , NONE = 5
 };
 
 std::ostream &operator<<(std::ostream &, const payload_command &);

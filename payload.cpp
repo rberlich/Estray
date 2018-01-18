@@ -46,7 +46,7 @@
 
 /******************************************************************************************/
 
-BOOST_CLASS_EXPORT_IMPLEMENT(command_payload) // NOLINT
+BOOST_CLASS_EXPORT_IMPLEMENT(command_container)
 BOOST_CLASS_EXPORT_IMPLEMENT(stored_number) // NOLINT
 BOOST_CLASS_EXPORT_IMPLEMENT(container_payload) // NOLINT
 BOOST_CLASS_EXPORT_IMPLEMENT(sleep_payload) // NOLINT
@@ -55,20 +55,14 @@ BOOST_CLASS_EXPORT_IMPLEMENT(sleep_payload) // NOLINT
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
 
-payload_base::payload_base(payload_command command)
-	: m_command(command)
-{ /* nothing */ }
-
-/******************************************************************************************/
-
-void payload_base::set_command(payload_command command) {
-	m_command = command;
+void payload_base::process() {
+	this->process_();
 }
 
 /******************************************************************************************/
 
-payload_command payload_base::get_command() const {
-	return m_command;
+bool payload_base::is_processed() {
+	return this->is_processed_();
 }
 
 /******************************************************************************************/
@@ -182,43 +176,158 @@ payload_base *from_binary(const std::string& descr) {
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
 
-command_payload::command_payload(payload_command command) : payload_base(command)
+command_container::command_container(payload_command command)
+	: m_command(command)
 { /* nothing */ }
 
 /******************************************************************************************/
 
-payload_type command_payload::get_payload_type() const {
-	return payload_type::command;
+command_container::command_container(
+	payload_command command
+	, payload_base *payload_ptr
+)
+	: m_command(command)
+	, m_payload_ptr(payload_ptr)
+{ /* nothing */ }
+
+/******************************************************************************************/
+
+command_container::command_container(command_container&& cp) {
+	m_command = cp.m_command; cp.m_command = payload_command::NONE;
+	if(m_payload_ptr) delete m_payload_ptr;
+	m_payload_ptr = cp.m_payload_ptr; cp.m_payload_ptr = nullptr;
 }
 
 /******************************************************************************************/
 
-std::string create_command_payload(payload_command command) {
-	// Create a new command payload item. Note that we are using the base type here,
-	// so the remote side can de-serialize it without prejudice.
-	payload_base *cp_ptr = new command_payload(command);
-
-	auto command_item_str = to_string(cp_ptr);
-
-	// Get rid of the work item
-	delete cp_ptr;
-
-	// Return the result
-	return command_item_str;
-}
-
-/******************************************************************************************/
-////////////////////////////////////////////////////////////////////////////////////////////
-/******************************************************************************************/
-
-void processible_payload::process() {
-	this->process_();
+command_container::~command_container() {
+	if(m_payload_ptr) delete m_payload_ptr;
 }
 
 /******************************************************************************************/
 
-bool processible_payload::is_processed() {
-	return this->is_processed_();
+command_container& command_container::operator=(command_container&& cp) {
+	m_command = cp.m_command; cp.m_command = payload_command::NONE;
+
+	if(m_payload_ptr) delete m_payload_ptr;
+	m_payload_ptr = cp.m_payload_ptr; cp.m_payload_ptr = nullptr;
+
+	return *this;
+}
+
+/******************************************************************************************/
+
+void command_container::reset(
+	payload_command command
+	, payload_base *payload_ptr
+) {
+	m_command = command;
+
+	if(m_payload_ptr) {
+		delete m_payload_ptr;
+	}
+	m_payload_ptr = payload_ptr;
+}
+
+/******************************************************************************************/
+
+void command_container::set_command(payload_command command) {
+	m_command = command;
+}
+
+/******************************************************************************************/
+
+payload_command command_container::get_command() const {
+	return m_command;
+}
+
+/******************************************************************************************/
+
+void command_container::process() {
+	if(m_payload_ptr) {
+		m_payload_ptr->process();
+	} else {
+		throw std::runtime_error("command_container::process(): No processing possible as m_payload_ptr is empty.");
+	}
+}
+
+/******************************************************************************************/
+
+bool command_container::is_processed() {
+	if(m_payload_ptr) {
+		return m_payload_ptr->is_processed();
+	} else {
+		return false;
+	}
+}
+
+/******************************************************************************************/
+
+std::string command_container::to_string() const {
+	// Reset the internal stream
+#ifdef BINARYARCHIVE
+	std::stringstream(std::ios::out | std::ios::binary).swap(m_stringstream);
+#else
+	std::stringstream(std::ios::out).swap(m_stringstream);
+#endif
+
+	{
+#if defined(BINARYARCHIVE)
+		boost::archive::binary_oarchive oa(m_stringstream);
+#elif defined(XMLARCHIVE)
+		boost::archive::xml_oarchive oa(m_stringstream);
+#elif defined(TEXTARCHIVE)
+		boost::archive::text_oarchive oa(m_stringstream);
+#else
+		boost::archive::xml_oarchive oa(m_stringstream);
+#endif
+		oa << boost::serialization::make_nvp("command_container", *this);
+	} // archive and stream closed at end of scope
+
+	return m_stringstream.str();
+}
+
+/******************************************************************************************/
+
+std::string command_container::to_xml() const {
+	// Reset the internal stream
+	std::stringstream(std::ios::out).swap(m_stringstream);
+
+	{
+		boost::archive::xml_oarchive oa(m_stringstream);
+		oa << boost::serialization::make_nvp("command_container", *this);
+	} // archive and stream closed at end of scope
+
+	return m_stringstream.str();
+}
+
+/******************************************************************************************/
+
+void command_container::from_string(const std::string& descr) {
+	command_container local_command_container{payload_command::NONE};
+
+	// Reset the internal stream
+#ifdef BINARYARCHIVE
+	std::stringstream(descr, std::ios::in | std::ios::binary).swap(m_stringstream);
+#else
+	std::stringstream(descr, std::ios::in).swap(m_stringstream);
+#endif
+
+	{
+#if defined(BINARYARCHIVE)
+		boost::archive::binary_iarchive ia(m_stringstream);
+#elif defined(XMLARCHIVE)
+		boost::archive::xml_iarchive ia(m_stringstream);
+#elif defined(TEXTARCHIVE)
+		boost::archive::text_iarchive ia(m_stringstream);
+#else
+		boost::archive::xml_iarchive ia(m_stringstream);
+#endif
+		ia >> boost::serialization::make_nvp("command_container", local_command_container);
+	} // archive and stream closed at end of scope
+
+	// Move the data from local_command_container
+	*this = std::move(local_command_container);
 }
 
 /******************************************************************************************/
@@ -244,7 +353,7 @@ double stored_number::value() const {
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
 
-container_payload::container_payload(const container_payload& cp) : processible_payload(cp)
+container_payload::container_payload(const container_payload& cp) : payload_base(cp)
 {
 	m_data.clear();
 	for(const auto& d: cp.m_data) {
@@ -261,12 +370,6 @@ container_payload& container_payload::operator=(const container_payload& cp) {
 	}
 
 	return *this;
-}
-
-/******************************************************************************************/
-
-payload_type container_payload::get_payload_type() const {
-	return payload_type::container;
 }
 
 /******************************************************************************************/
@@ -321,12 +424,6 @@ void container_payload::add(std::shared_ptr<stored_number> p) {
 
 sleep_payload::sleep_payload(double sleep_time) : m_sleep_time(sleep_time)
 { /* default */ }
-
-/******************************************************************************************/
-
-payload_type sleep_payload::get_payload_type() const {
-	return payload_type::sleep;
-}
 
 /******************************************************************************************/
 

@@ -61,6 +61,19 @@ async_websocket_client::async_websocket_client(
 
 	// Set the transfer mode according to the defines in CMakeLists.txt
 	set_transfer_mode(m_ws);
+
+	// Set a control-frame callback
+	f_when_control_frame_arrived
+		= [this](frame_type frame_t, string_view s) {
+		if(
+			boost::beast::websocket::frame_type::close==frame_t
+		) {
+			std::cout << "Client has received a close frame" << std::endl;
+		}
+	};
+
+	// Set the callback to be executed on every incoming control frame.
+	m_ws.control_callback(f_when_control_frame_arrived);
 }
 
 /******************************************************************************************/
@@ -68,15 +81,16 @@ async_websocket_client::async_websocket_client(
 void async_websocket_client::run() {
 	// Start looking up the domain name. This call will return immediately,
 	// when_resolved() will be called once the operation is complete.
+	auto self = shared_from_this();
 	m_resolver.async_resolve(
 		m_address
 		, std::to_string(m_port)
-		, std::bind(
-			&async_websocket_client::when_resolved
-			, shared_from_this()
-			, std::placeholders::_1
-			, std::placeholders::_2
-		)
+		, [self](
+			boost::system::error_code ec
+			, const resolver::results_type &results
+		) {
+			self->when_resolved(ec, results);
+		}
 	);
 
 	// This call will block until no more work remains in the ASIO work queue
@@ -106,15 +120,14 @@ void async_websocket_client::when_resolved(
 	}
 
 	// Make the connection on the endpoint we get from a lookup
+	auto self = shared_from_this();
 	boost::asio::async_connect(
 		m_ws.next_layer()
 		, results.begin()
 		, results.end()
-		, std::bind(
-			&async_websocket_client::when_connected
-			, shared_from_this()
-			, std::placeholders::_1
-		)
+		, [self](boost::system::error_code ec, boost::asio::ip::tcp::resolver::iterator /* unused */) {
+			self->when_connected(ec);
+		}
 	);
 }
 
@@ -134,14 +147,13 @@ void async_websocket_client::when_connected(boost::system::error_code ec) {
 	}
 
 	// Perform the handshake
+	auto self = shared_from_this();
 	m_ws.async_handshake(
 		m_address
 		, "/"
-		, std::bind(
-			&async_websocket_client::when_handshake_complete
-			, shared_from_this()
-			, std::placeholders::_1
-		)
+		, [self](boost::system::error_code ec) {
+			self->when_handshake_complete(ec);
+		}
 	);
 }
 
@@ -162,7 +174,8 @@ void async_websocket_client::when_handshake_complete(boost::system::error_code e
 	}
 
 	// Send the first command to the server
-	async_start_write(create_command_payload(payload_command::GETDATA));
+	m_command_container.reset(payload_command::GETDATA);
+	async_start_write(m_command_container.to_string());
 }
 
 /******************************************************************************************/
@@ -173,14 +186,15 @@ void async_websocket_client::async_start_write(const std::string& message) {
 	m_outgoing_message = message;
 
 	// Send the message
+	auto self = shared_from_this();
 	m_ws.async_write(
 		boost::asio::buffer(m_outgoing_message)
-		, std::bind(
-			&async_websocket_client::when_written
-			, shared_from_this()
-			, std::placeholders::_1
-			, std::placeholders::_2
-		)
+		, [self](
+			boost::system::error_code ec
+			, std::size_t nBytesTransferred
+		) {
+			self->when_written(ec, nBytesTransferred);
+		}
 	);
 }
 
@@ -213,14 +227,15 @@ void async_websocket_client::when_written(
 /******************************************************************************************/
 
 void async_websocket_client::async_start_read() {
+	auto self = shared_from_this();
 	m_ws.async_read(
 		m_incoming_buffer
-		, std::bind(
-			&async_websocket_client::when_read
-			, shared_from_this()
-			, std::placeholders::_1
-			, std::placeholders::_2
-		)
+		, [self] (
+			boost::system::error_code ec
+			, std::size_t nBytesTransferred
+		) {
+			self->when_read(ec, nBytesTransferred);
+		}
 	);
 }
 
@@ -260,40 +275,26 @@ std::string async_websocket_client::process_request() {
 	auto message = boost::beast::buffers_to_string(m_incoming_buffer.data());
 
 	// De-serialize the object
-	payload_base *plb_ptr;
 	try {
-		plb_ptr = from_string(message);
+		m_command_container.from_string(message);
 	} catch(...) {
-		throw std::runtime_error("async_websocket_server_session::process_request(): Caught exception while de-serializing");
+		throw std::runtime_error("async_websocket_client::process_request(): Caught exception while de-serializing");
 	}
 
 	// Clear the buffer, so we may later fill it with data to be sent
 	m_incoming_buffer.consume(m_incoming_buffer.size());
 
 	// Extract the command
-	auto inboundCommand = plb_ptr->get_command();
+	auto inboundCommand = m_command_container.get_command();
 
 	// Act on the command received
 	switch(inboundCommand) {
 		case payload_command::COMPUTE: {
-			// Elevate the pointer to a processible_payload
-			auto *pp_ptr = dynamic_cast<processible_payload *>(plb_ptr);
-
-			// Process it. This is where the actual work is done.
-			pp_ptr->process();
+			// Process the work item
+			m_command_container.process();
 
 			// Set the command for the way back to the server
-			pp_ptr->set_command(payload_command::RESULT);
-
-			// Serialize the object again and return the result. Note that we
-			// must use the base pointer here.
-			auto processed_item_str = to_string(plb_ptr);
-
-			// Get rid of the work item
-			delete plb_ptr;
-
-			// Return the result
-			return processed_item_str;
+			m_command_container.set_command(payload_command::RESULT);
 		} break;
 
 		case payload_command::NODATA: // This must be a command payload
@@ -303,17 +304,8 @@ std::string async_websocket_client::process_request() {
 			std::uniform_int_distribution<> dist(10, 50);
 			std::this_thread::sleep_for(std::chrono::milliseconds(dist(m_rng_engine)));
 
-			if(plb_ptr->get_payload_type() == payload_type::command) {
-				// Just re-use the existing object
-				plb_ptr->set_command(payload_command::GETDATA);
-				auto command_item_str = to_string(plb_ptr);
-				delete plb_ptr;
-				return command_item_str;
-			} else {
-				// Get rid of the old object and return a new command item
-				delete plb_ptr;
-				return create_command_payload(payload_command::GETDATA);
-			}
+			// Tell the server again we need work
+			m_command_container.reset(payload_command::GETDATA);
 		} break;
 
 		default: {
@@ -322,6 +314,9 @@ std::string async_websocket_client::process_request() {
 			);
 		} break;
 	}
+
+	// Serialize the object again and return the result
+	return m_command_container.to_string();
 }
 
 /******************************************************************************************/
@@ -376,13 +371,6 @@ async_websocket_server_session::async_websocket_server_session(
 
 /******************************************************************************************/
 
-async_websocket_server_session::~async_websocket_server_session() {
-	std::cout << "async_websocket_server_session::async_websocket_server_session(): Closing down connection" << std::endl;
-	this->do_close(m_close_code);
-}
-
-/******************************************************************************************/
-
 void async_websocket_server_session::async_start_run() {
 	// --------------------------------------------------------------------------
 	// Connections and communication
@@ -424,14 +412,13 @@ void async_websocket_server_session::async_start_ping() {
 
 	// Start to wait asynchronously. This call will return immediately.
 	// when_timer_fired() will be called once the timer has expired.
+	auto self = shared_from_this();
 	m_timer.async_wait(
 		boost::asio::bind_executor(
 			m_strand
-			, std::bind(
-				&async_websocket_server_session::when_timer_fired
-				, shared_from_this()
-				, std::placeholders::_1
-			)
+			, [self](boost::system::error_code ec) {
+				self->when_timer_fired(ec);
+			}
 		)
 	);
 
@@ -446,11 +433,9 @@ void async_websocket_server_session::async_start_ping() {
 		m_ping_data
 		, boost::asio::bind_executor(
 			m_strand
-			, std::bind(
-				&async_websocket_server_session::when_ping_sent
-				, shared_from_this()
-				, std::placeholders::_1
-			)
+			, [self](boost::system::error_code ec) {
+				self->when_ping_sent(ec);
+			}
 		)
 	);
 }
@@ -475,7 +460,6 @@ void async_websocket_server_session::when_timer_fired(boost::system::error_code 
 			std::cerr << "when_timer_fired: " << ec.message() << std::endl;
 		}
 
-		std::cout << "async_websocket_server_session::when_timer_fired(): Connection is dead" << std::endl;
 		m_ping_state = ping_state::CONNECTION_IS_STALE;
 		return;
 	}
@@ -487,8 +471,11 @@ void async_websocket_server_session::when_timer_fired(boost::system::error_code 
 	} else {
 		m_ping_state = ping_state::CONNECTION_IS_STALE;
 
-		// Either this is a stale connection or the SENDING_PING flag is still set
-		std::cout << "async_websocket_server_session::when_timer_fired(): Connection is dead: " << m_ping_state << std::endl;
+		if(!this->m_check_stopped()) {
+			// Either this is a stale connection or the SENDING_PING flag is still set
+			std::cout
+				<< "async_websocket_server_session::when_timer_fired(): Connection is dead: " << m_ping_state << std::endl;
+		}
 		return;
 	}
 }
@@ -499,14 +486,13 @@ void async_websocket_server_session::async_start_accept() {
 	// This function initiates an asynchronous chain of callbacks, where each callback is
 	// executed when the previous call (here: async_accept) is completed. Error handling is
 	// done in the callback, using an error code provided by Boost.Beast and/or Boost.ASIO.
+	auto self = shared_from_this();
 	m_ws.async_accept(
 		boost::asio::bind_executor(
 			m_strand
-			, std::bind(
-				&async_websocket_server_session::when_connection_accepted
-				, shared_from_this()
-				, std::placeholders::_1
-			)
+			, [self](boost::system::error_code ec) {
+				self->when_connection_accepted(ec);
+			}
 		)
 	);
 }
@@ -517,7 +503,7 @@ void async_websocket_server_session::when_connection_accepted(boost::system::err
 	if(ec) {
 		std::cerr << "when_connection_accepted: "  << ec.message() << std::endl;
 
-		m_close_code = boost::beast::websocket::close_code::going_away;
+		do_close(boost::beast::websocket::close_code::going_away);
 
 		return;
 	}
@@ -537,16 +523,17 @@ void async_websocket_server_session::when_connection_accepted(boost::system::err
 
 void async_websocket_server_session::async_start_read() {
 	// Read a message into our buffer
+	auto self = shared_from_this();
 	m_ws.async_read(
 		m_incoming_buffer
 		, boost::asio::bind_executor(
 			m_strand
-			, std::bind(
-				&async_websocket_server_session::when_read
-				, shared_from_this()
-				, std::placeholders::_1
-				, std::placeholders::_2
-			)
+			, [self](
+				boost::system::error_code ec
+				, std::size_t nBytesTransferred
+			) {
+				self->when_read(ec, nBytesTransferred);
+			}
 		)
 	);
 }
@@ -562,7 +549,7 @@ void async_websocket_server_session::when_read(
 			std::cerr << "when_read: " << ec.message() << std::endl;
 		}
 
-		m_close_code = boost::beast::websocket::close_code::going_away;
+		do_close(boost::beast::websocket::close_code::going_away);
 	 	return;
 	}
 
@@ -570,7 +557,7 @@ void async_websocket_server_session::when_read(
 	try {
 		async_start_write(process_request());
 	} catch(...) {
-		m_close_code = boost::beast::websocket::close_code::internal_error;
+		do_close(boost::beast::websocket::close_code::internal_error);
 		return;
 	}
 }
@@ -582,16 +569,17 @@ void async_websocket_server_session::async_start_write(const std::string& messag
 	m_outgoing_message = message;
 
 	// Echo the message
+	auto self = shared_from_this();
 	m_ws.async_write(
 		boost::asio::buffer(m_outgoing_message)
 		, boost::asio::bind_executor(
 			m_strand
-			, std::bind(
-				&async_websocket_server_session::when_written
-				, shared_from_this()
-				, std::placeholders::_1
-				, std::placeholders::_2
-			)
+			, [self](
+				boost::system::error_code ec
+				, std::size_t nBytesTransferred
+			) {
+				self->when_written(ec, nBytesTransferred);
+			}
 		)
 	);
 }
@@ -607,8 +595,7 @@ void async_websocket_server_session::when_written(
 			std::cerr << "when_written: " << ec.message() << std::endl;
 		}
 
-		m_close_code = boost::beast::websocket::close_code::going_away;
-
+		do_close(boost::beast::websocket::close_code::going_away);
 		return;
 	}
 
@@ -616,8 +603,9 @@ void async_websocket_server_session::when_written(
 	m_outgoing_message.clear();
 
 	if(this->m_check_stopped()) {
+		std::cout << "Server is stopped" << std::endl;
 		// Do not continue if a stop criterion was reached
-		m_close_code = boost::beast::websocket::close_code::normal;
+		do_close(boost::beast::websocket::close_code::normal);
 	} else {
 		// Start another read cycle
 		async_start_read();
@@ -627,7 +615,12 @@ void async_websocket_server_session::when_written(
 /******************************************************************************************/
 
 void async_websocket_server_session::do_close(boost::beast::websocket::close_code cc) {
-	// Make sure no more pings are sent
+	std::cout << "async_websocket_server_session: Closing down connection" << std::endl;
+
+	// Store the close code for later reference
+	m_close_code = cc;
+
+	// Make sure no more pings are sent and the timer expires
 	m_timer.cancel();
 
 	if(m_ws.is_open()) {
@@ -666,23 +659,13 @@ std::string async_websocket_server_session::getAndSerializeWorkItem() {
 	// Obtain a container_payload object from the queue, serialize it and send it off
 	payload_base *plb_ptr = nullptr;
 	if (this->m_get_next_payload_item(plb_ptr) && plb_ptr != nullptr) {
-		plb_ptr->set_command(payload_command::COMPUTE);
-		auto result = to_string(plb_ptr);
-		delete plb_ptr; // we know sc is not a nullptr
-		return result;
+		m_command_container.reset(payload_command::COMPUTE, plb_ptr);
 	} else {
-		// Create a new command payload item. Note that we are using the base type here,
-		// so the remote side can de-serialize it without prejudice.
-		payload_base *cp_ptr = new command_payload(payload_command::NODATA);
-
-		auto command_item_str = to_string(cp_ptr);
-
-		// Get rid of the work item
-		delete cp_ptr;
-
-		// Return the result
-		return command_item_str;
+		// Let the remote side know whe don't have work
+		m_command_container.reset(payload_command::NODATA);
 	}
+
+	return m_command_container.to_string();
 }
 
 /******************************************************************************************/
@@ -692,9 +675,8 @@ std::string async_websocket_server_session::process_request() {
 	auto message = boost::beast::buffers_to_string(m_incoming_buffer.data());
 
 	// De-serialize the object
-	payload_base *plb_ptr;
 	try {
-		plb_ptr = from_string(message);
+		m_command_container.from_string(message);
 	} catch(...) {
 		throw std::runtime_error("async_websocket_server_session::process_request(): Caught exception while de-serializing");
 	}
@@ -703,35 +685,26 @@ std::string async_websocket_server_session::process_request() {
 	m_incoming_buffer.consume(m_incoming_buffer.size());
 
 	// Extract the command
-	auto inboundCommand = plb_ptr->get_command();
+	auto inboundCommand = m_command_container.get_command();
 
 	// Act on the command received
 	switch(inboundCommand) {
 		case payload_command::GETDATA:
 		case payload_command::ERROR: {
-			delete plb_ptr;
 			return getAndSerializeWorkItem();
 		} break;
 
 		case payload_command::RESULT: {
-#ifdef DEBUG
-			// Elevate the pointer to a processible_payload
-			auto *pp_ptr = dynamic_cast<processible_payload *>(plb_ptr);
 			// Check that work was indeed done
-			if(!pp_ptr->is_processed()) {
+			if(!m_command_container.is_processed()) {
 				throw std::runtime_error("async_websocket_server_session::process_request(): Returned payload is unprocessed");
 			}
-#endif
-
-			// Get rid of the returned item
-			delete plb_ptr;
 
 			// Retrieve the next work item and send it to the client for processing
 			return getAndSerializeWorkItem();
 		} break;
 
 		default: {
-			delete plb_ptr;
 			throw std::runtime_error(
 				"async_websocket_server_session::process_request(): Got unknown or invalid command "
 				   + boost::lexical_cast<std::string>(inboundCommand)
@@ -871,13 +844,12 @@ void async_websocket_server::run() {
 /******************************************************************************************/
 
 void async_websocket_server::async_start_accept() {
+	auto self = shared_from_this();
 	m_acceptor.async_accept(
-		m_socket,
-		std::bind(
-			&async_websocket_server::when_accepted
-			, shared_from_this()
-			, std::placeholders::_1
-		)
+		m_socket
+		, [self](boost::system::error_code ec) {
+			self->when_accepted(ec);
+		}
 	);
 }
 
@@ -893,7 +865,7 @@ void async_websocket_server::when_accepted(boost::system::error_code ec) {
 		std::make_shared<async_websocket_server_session>(
 			std::move(m_socket)
 			, [this](payload_base *&plb_ptr) -> bool { return this->getNextPayloadItem(plb_ptr); }
-			, [this]() -> bool { return this->check_server_stopped(); }
+			, [this]() -> bool { return this->server_stopped(); }
 			, [this](bool sign_on) {
 				if(sign_on) {
 					this->m_n_active_sessions++;
@@ -923,7 +895,11 @@ bool async_websocket_server::getNextPayloadItem(payload_base*& plb_ptr) {
 
 	// Update counters and the stop flag, if successful
 	if(success) {
-		if(m_n_packages_served++ >= m_n_max_packages_served){
+		if(m_n_packages_served++ < m_n_max_packages_served){
+			if(m_n_packages_served%10 == 0) {
+				std::cout << "async_websocket_server served " << m_n_packages_served << " packages" << std::endl;
+			}
+		} else { // Leave
 			// Indicate to all parties that we want to stop
 			m_server_stopped = true;
 			// Stop accepting new connections
@@ -931,10 +907,6 @@ bool async_websocket_server::getNextPayloadItem(payload_base*& plb_ptr) {
 			// Finally close the socket
 			m_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 			m_socket.close();
-		} else {
-			if(m_n_packages_served%10 == 0) {
-				std::cout << "async_websocket_server served " << m_n_packages_served << " packages" << std::endl;
-			}
 		}
 	}
 
@@ -944,9 +916,9 @@ bool async_websocket_server::getNextPayloadItem(payload_base*& plb_ptr) {
 
 /******************************************************************************************/
 
-bool async_websocket_server::check_server_stopped() const {
-	return this->m_server_stopped;
-};
+bool async_websocket_server::server_stopped() const {
+	return this->m_server_stopped.load();
+}
 
 /******************************************************************************************/
 
@@ -957,7 +929,7 @@ void async_websocket_server::container_payload_producer(std::size_t containerSiz
 
 	bool produce_new_container = true;
 	container_payload *sc_ptr = nullptr;
-	while (!this->m_server_stopped) {
+	while (true) {
 		using namespace std::literals;
 
 		// Only create a new container if the old one was
@@ -967,6 +939,7 @@ void async_websocket_server::container_payload_producer(std::size_t containerSiz
 		}
 
 		if (!m_payload_queue.push(sc_ptr)) { // Container could not be added to the queue
+			if(this->m_server_stopped) break;
 			produce_new_container = false;
 			std::this_thread::sleep_for(5ms);
 		} else {
@@ -990,6 +963,7 @@ void async_websocket_server::sleep_payload_producer(double sleep_time) {
 		}
 
 		if (!m_payload_queue.push(sp_ptr)) { // Container could not be added to the queue
+			if(this->m_server_stopped) break;
 			produce_new_container = false;
 			std::this_thread::sleep_for(5ms);
 		} else {

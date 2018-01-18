@@ -96,25 +96,22 @@ class payload_base {
 	 friend class boost::serialization::access;
 
 	 template<class Archive>
-	 void serialize(Archive & ar, const unsigned int version) {
-		 ar & BOOST_SERIALIZATION_NVP(m_command);
-	 }
+	 void serialize(Archive & ar, const unsigned int version)
+	 { /* nothing */ }
+
 	 ///////////////////////////////////////////////////////////////
 
 public:
 	 payload_base() = default;
-	 explicit payload_base(payload_command);
 	 virtual ~payload_base() = default;
 	 payload_base(const payload_base&) = default;
 
-	 void set_command(payload_command);
-	 payload_command get_command() const;
-
-	 virtual payload_type get_payload_type() const = 0;
+	 void process();
+	 bool is_processed();
 
 private:
-	 // Data
-	 payload_command m_command{payload_command::GETDATA};
+	 virtual void process_() = 0;
+	 virtual bool is_processed_() = 0;
 };
 
 /******************************************************************************************/
@@ -134,59 +131,59 @@ payload_base *from_binary(const std::string&);
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
 
-class command_payload : public payload_base
-{
+class command_container {
 	 ///////////////////////////////////////////////////////////////
 	 friend class boost::serialization::access;
 
 	 template<class Archive>
-	 void serialize(Archive & ar, const unsigned int version){
-		 using boost::serialization::make_nvp;
+	 void serialize(Archive & ar, const unsigned int version) {
 		 ar
-		 & make_nvp("payload_base", boost::serialization::base_object<payload_base>(*this));
+		 & BOOST_SERIALIZATION_NVP(m_command)
+		 & BOOST_SERIALIZATION_NVP(m_payload_ptr);
 	 }
 	 ///////////////////////////////////////////////////////////////
 
 public:
-	 command_payload() = default;
-	 explicit command_payload(payload_command);
-	 ~command_payload() override = default;
-	 command_payload(const command_payload&) = default;
+	 explicit command_container(
+		 payload_command
+	 );
+	 command_container(
+		 payload_command
+		 , payload_base *
+	 );
+	 command_container(command_container&&);
+	 ~command_container();
 
-	 payload_type get_payload_type() const override;
-};
+	 command_container& operator=(command_container&&);
 
-/******************************************************************************************/
-/** @brief Creates a command payload object */
-std::string create_command_payload(payload_command);
+	 // Deleted copy-constructors and assignment operator -- the class is non-copyable
+	 command_container(const command_container&) = delete;
+	 command_container& operator=(const command_container&) = delete;
 
-/******************************************************************************************/
-////////////////////////////////////////////////////////////////////////////////////////////
-/******************************************************************************************/
+	 // Reset to a new command and payload or clear the object
+	 void reset(payload_command=payload_command::NONE, payload_base * = nullptr);
 
-class processible_payload : public payload_base
-{
-	 ///////////////////////////////////////////////////////////////
-	 friend class boost::serialization::access;
+	 // Access to the command
+	 void set_command(payload_command);
+	 payload_command get_command() const;
 
-	 template<class Archive>
-	 void serialize(Archive & ar, const unsigned int version){
-		 using boost::serialization::make_nvp;
-		 ar
-		 & make_nvp("payload_base", boost::serialization::base_object<payload_base>(*this));
-	 }
-	 ///////////////////////////////////////////////////////////////
-
-	 // Use the constructors provided by payload_base
-	 using payload_base::payload_base;
-
-public:
+	 // Processing of the payload (if any)
 	 void process();
 	 bool is_processed();
 
+	 std::string to_string() const;
+	 void from_string(const std::string&);
+
+	 std::string to_xml() const;
+
 private:
-	 virtual void process_() = 0;
-	 virtual bool is_processed_() = 0;
+	 command_container() = default;
+
+	 // Data
+	 payload_command m_command{payload_command::NONE};
+	 payload_base *  m_payload_ptr{nullptr};
+
+	 mutable std::stringstream m_stringstream;
 };
 
 /******************************************************************************************/
@@ -224,7 +221,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
 
-class container_payload : public processible_payload
+class container_payload : public payload_base
 {
 	 ///////////////////////////////////////////////////////////////
 	 friend class boost::serialization::access;
@@ -233,7 +230,7 @@ class container_payload : public processible_payload
 	 void serialize(Archive & ar, const unsigned int version){
 		 using boost::serialization::make_nvp;
 		 ar
-		 & make_nvp("processible_payload", boost::serialization::base_object<processible_payload>(*this))
+		 & make_nvp("payload_base", boost::serialization::base_object<payload_base>(*this))
 		 & BOOST_SERIALIZATION_NVP(m_data);
 	 }
 	 ///////////////////////////////////////////////////////////////
@@ -259,8 +256,6 @@ public:
 	 // Assignment operator
 	 container_payload& operator=(const container_payload&);
 
-	 payload_type get_payload_type() const override;
-
 	 void sort();
 
 	 std::size_t size() const;
@@ -284,7 +279,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
 
-class sleep_payload : public processible_payload
+class sleep_payload : public payload_base
 {
 	 ///////////////////////////////////////////////////////////////
 	 friend class boost::serialization::access;
@@ -293,7 +288,7 @@ class sleep_payload : public processible_payload
 	 void serialize(Archive & ar, const unsigned int version){
 		 using boost::serialization::make_nvp;
 		 ar
-		 & make_nvp("payload_base", boost::serialization::base_object<processible_payload>(*this))
+		 & make_nvp("payload_base", boost::serialization::base_object<payload_base>(*this))
 		 & BOOST_SERIALIZATION_NVP(m_sleep_time);
 	 }
 	 ///////////////////////////////////////////////////////////////
@@ -309,8 +304,6 @@ public:
 
 	 // Assignment operator
 	 sleep_payload& operator=(const sleep_payload&) = default;
-
-	 payload_type get_payload_type() const override;
 
 private:
 	 // Only needed for de-serialization
@@ -330,8 +323,7 @@ private:
 // Used for the serialization of the classes in this file
 
 BOOST_SERIALIZATION_ASSUME_ABSTRACT(payload_base)
-BOOST_SERIALIZATION_ASSUME_ABSTRACT(processible_payload)
-BOOST_CLASS_EXPORT_KEY(command_payload)
+BOOST_CLASS_EXPORT_KEY(command_container)
 BOOST_CLASS_EXPORT_KEY(stored_number)
 BOOST_CLASS_EXPORT_KEY(container_payload)
 BOOST_CLASS_EXPORT_KEY(sleep_payload)
