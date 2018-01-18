@@ -151,10 +151,10 @@ public:
 		 payload_command
 		 , payload_base *
 	 );
-	 command_container(command_container&&);
+	 command_container(command_container&&) noexcept;
 	 ~command_container();
 
-	 command_container& operator=(command_container&&);
+	 command_container& operator=(command_container&&) noexcept;
 
 	 // Deleted copy-constructors and assignment operator -- the class is non-copyable
 	 command_container(const command_container&) = delete;

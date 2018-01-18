@@ -46,7 +46,7 @@
 
 /******************************************************************************************/
 
-BOOST_CLASS_EXPORT_IMPLEMENT(command_container)
+BOOST_CLASS_EXPORT_IMPLEMENT(command_container) // NOLINT
 BOOST_CLASS_EXPORT_IMPLEMENT(stored_number) // NOLINT
 BOOST_CLASS_EXPORT_IMPLEMENT(container_payload) // NOLINT
 BOOST_CLASS_EXPORT_IMPLEMENT(sleep_payload) // NOLINT
@@ -192,7 +192,7 @@ command_container::command_container(
 
 /******************************************************************************************/
 
-command_container::command_container(command_container&& cp) {
+command_container::command_container(command_container&& cp) noexcept {
 	m_command = cp.m_command; cp.m_command = payload_command::NONE;
 	if(m_payload_ptr) delete m_payload_ptr;
 	m_payload_ptr = cp.m_payload_ptr; cp.m_payload_ptr = nullptr;
@@ -206,7 +206,7 @@ command_container::~command_container() {
 
 /******************************************************************************************/
 
-command_container& command_container::operator=(command_container&& cp) {
+command_container& command_container::operator=(command_container&& cp) noexcept {
 	m_command = cp.m_command; cp.m_command = payload_command::NONE;
 
 	if(m_payload_ptr) delete m_payload_ptr;
