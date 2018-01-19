@@ -17,6 +17,7 @@ The code is made available under the terms of the Boost Software License in vers
 
 * will be useful to people exploring Boost.Beast, e.g. by serving as a more comprehensive starting point for your own work
 * may evolve over time to show best practices when using Beast. Note that I DO NOT CLAIM that the code made available here represents in any way best practices. Rather, it currently reflects my own, personal and certainly limited understanding of how Boost.Beast may be used best to implement client-server systems for work-distribution on top of websockets. If you stumble upon areas where the code may be improved, please feel free to make suggestions, and I will aim to make improvements.
+* may serve as the basis for further profiling of the simultaneous use of Boost.Beast and Boost.Serialization for more complex workloads.
 
 See each file for the licensing information.
 
