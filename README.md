@@ -37,4 +37,5 @@ _Caveats:_
 *PLEASE DO NOTE THAT THE CODE WILL CONTAIN BUGS. USE AT YOUR OWN RISK.*
 
 _Thanks:_
+
 The author would like to thank Vinnie Falco and Robert Ramey for the hard work they put into Boost.Beast and Boost.Serialization!
