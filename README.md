@@ -32,6 +32,7 @@ _Caveats:_
 
 * As the focus of this testbed is on Boost.Beast and Boost.Serialization and it is not possible to submit std::shared_ptr-objects to a Boost.Lockfree queue, payload items are accessed via raw pointers, so Estray has some "raw" new and delete-calls.
 * The code has so far only been tested on Ubuntu 17.10, using g++ 7.2.0 and Boost 1.66 (which is the first version to ship with Boost.Beast). It compiles with Clang on MacOS X 10.13.2 but has not been tested there.
+* No attempt has been made to test the code with C++11. It is possible that it will compile only with C++14 and above.
 * No attempt has been made to compile the code on MS Windows so far.
 
 *PLEASE DO NOTE THAT THE CODE WILL CONTAIN BUGS. USE AT YOUR OWN RISK.*
