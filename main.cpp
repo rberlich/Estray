@@ -63,6 +63,8 @@ const double         DEFAULTSLEEPTIME = 1.;
 const std::size_t    DEFAULTCONTAINERSIZE = 1000;
 const std::size_t    DEFAULTNACCEPT = 10000;
 const unsigned short DEFAULTPORT = 10000;
+const std::size_t    DEFAULTFULLQUEUESLEEPMS = 5;
+const std::size_t    DEFAULTMAXQUEUESIZE = 5000;
 const std::string    DEFAULTHOST = "127.0.0.1"; // localhost // NOLINT
 
 /******************************************************************************************/
@@ -70,11 +72,13 @@ const std::string    DEFAULTHOST = "127.0.0.1"; // localhost // NOLINT
 int main(int argc, char **argv) {
 	bool           is_client = false;
 	payload_type   pType = DEFAULTPAYLOADTYPE;
-	double         sleep_time = DEFAULTSLEEPTIME;
+	double         payload_sleep_time = DEFAULTSLEEPTIME;
 	std::size_t    container_size = DEFAULTCONTAINERSIZE;
 	std::size_t    max_n_served = DEFAULTNACCEPT;
 	std::size_t    n_producer_threads = 0;
 	std::size_t    n_context_threads = 0;
+	std::size_t    full_queue_sleep_ms = DEFAULTFULLQUEUESLEEPMS;
+	std::size_t    max_queue_size = DEFAULTMAXQUEUESIZE;
 	unsigned short port = DEFAULTPORT;
 	std::string    host = DEFAULTHOST;
 
@@ -90,7 +94,7 @@ int main(int argc, char **argv) {
 			(
 				"container_size,s", po::value<std::size_t>(&container_size)->default_value(DEFAULTCONTAINERSIZE)
 				, "The desired size of each container_payload object")
-			(  "sleep_time,t", po::value<double>(&sleep_time)->default_value(DEFAULTSLEEPTIME),
+			(  "payload_sleep_time,t", po::value<double>(&payload_sleep_time)->default_value(DEFAULTSLEEPTIME),
 			   "The amount of time in seconds that each client with a sleep_payload should sleep")
 			(
 				"n_producer_threads,n", po::value<std::size_t>(&n_producer_threads)->default_value(std::thread::hardware_concurrency())
@@ -101,6 +105,10 @@ int main(int argc, char **argv) {
 			(
 				"max_n_served,m", po::value<std::size_t>(&max_n_served)->default_value(DEFAULTNACCEPT)
 				, "The total number of packages served by the server")
+			(  "full_queue_sleep_ms,f", po::value<std::size_t>(&full_queue_sleep_ms)->default_value(DEFAULTFULLQUEUESLEEPMS)
+			   , "The amount of milliseconds a payload producer should pause when the queue is full")
+			(  "max_queue_size,q", po::value<std::size_t>(&max_queue_size)->default_value(DEFAULTMAXQUEUESIZE)
+			   , "The maximum size of the payload queue")
 			(
 				"port", po::value<unsigned short>(&port)->default_value(DEFAULTPORT)
 				, "The port to which a client should connect or on which the server should listen")
@@ -132,7 +140,9 @@ int main(int argc, char **argv) {
 				, max_n_served
 				, pType
 				, container_size
-				, sleep_time
+				, payload_sleep_time
+				, full_queue_sleep_ms
+				, max_queue_size
 			)->run();
 			auto end = std::chrono::system_clock::now();
 

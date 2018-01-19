@@ -289,6 +289,8 @@ public:
 		 , payload_type /* payload_type */
 		 , std::size_t /* container_size */
 	 	 , double /* sleep_time */
+		 , std::size_t /* full_queue_sleep_ms */
+	 	 , std::size_t /* max_queue_size */
 	 );
 
 	 void run();
@@ -312,8 +314,8 @@ private:
 
 	 bool getNextPayloadItem(payload_base*&);
 
-	 void container_payload_producer(std::size_t);
-	 void sleep_payload_producer(double);
+	 void container_payload_producer(std::size_t, std::size_t);
+	 void sleep_payload_producer(double, std::size_t);
 
 	 bool server_stopped() const;
 
@@ -329,6 +331,9 @@ private:
 	 std::atomic<std::size_t> m_n_active_sessions{0};
 	 std::atomic<std::size_t> m_n_packages_served{0};
 	 const std::size_t m_n_max_packages_served;
+	 const std::size_t m_full_queue_sleep_ms = 5;
+	 const std::size_t m_max_queue_size = 5000;
+
 	 std::atomic<bool> m_server_stopped{false};
 
 	 payload_type m_payload_type = payload_type::container; ///< Indicates which sort of payload should be produced
@@ -340,7 +345,7 @@ private:
 	 double m_sleep_time = 1.; ///< The sleep time of sleep_payload objects
 
 	 // Holds payloads to be passed to the sessions
-	 boost::lockfree::queue<payload_base *, boost::lockfree::fixed_sized<true>> m_payload_queue{5000};
+	 boost::lockfree::queue<payload_base *, boost::lockfree::fixed_sized<true>> m_payload_queue;
 
 	 // --------------------------------------------------------------
 };

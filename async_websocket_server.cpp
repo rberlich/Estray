@@ -726,6 +726,8 @@ async_websocket_server::async_websocket_server(
 	, payload_type payload_type
 	, std::size_t container_size
 	, double sleep_time
+	, std::size_t full_queue_sleep_ms
+	, std::size_t max_queue_size
 )
 	: m_endpoint(boost::asio::ip::make_address(address), port)
    , m_n_listener_threads(n_context_threads>0?n_context_threads:std::thread::hardware_concurrency())
@@ -734,6 +736,9 @@ async_websocket_server::async_websocket_server(
 	, m_n_producer_threads(n_producer_threads>0?n_producer_threads:std::thread::hardware_concurrency())
 	, m_container_size(container_size)
 	, m_sleep_time(sleep_time)
+	, m_full_queue_sleep_ms(full_queue_sleep_ms)
+	, m_max_queue_size(max_queue_size)
+	, m_payload_queue{m_max_queue_size}
 { /* nothing */ }
 
 /******************************************************************************************/
@@ -777,8 +782,11 @@ void async_websocket_server::run() {
 			for (std::size_t i = 0; i < m_n_producer_threads; i++) {
 				m_producer_threads_vec.emplace_back(
 					std::thread(
-						[this](std::size_t container_size){ this->container_payload_producer(container_size); }
+						[this](std::size_t container_size, std::size_t full_queue_sleep_ms){
+							this->container_payload_producer(container_size, full_queue_sleep_ms);
+						}
 						, m_container_size
+						, m_full_queue_sleep_ms
 					)
 				);
 			}
@@ -789,8 +797,11 @@ void async_websocket_server::run() {
 			for (std::size_t i = 0; i < m_n_producer_threads; i++) {
 				m_producer_threads_vec.emplace_back(
 					std::thread(
-						[this](double sleep_time) { this->sleep_payload_producer(sleep_time); }
+						[this](double sleep_time, std::size_t full_queue_sleep_ms) {
+							this->sleep_payload_producer(sleep_time, full_queue_sleep_ms);
+						}
 						, m_sleep_time
+						, m_full_queue_sleep_ms
 					)
 				);
 			}
@@ -922,7 +933,10 @@ bool async_websocket_server::server_stopped() const {
 
 /******************************************************************************************/
 
-void async_websocket_server::container_payload_producer(std::size_t containerSize) {
+void async_websocket_server::container_payload_producer(
+	std::size_t containerSize
+	, std::size_t full_queue_sleep_ms
+) {
 	std::random_device nondet_rng;
 	std::mt19937 mersenne(nondet_rng());
 	std::normal_distribution<double> normalDist(0.,1.);
@@ -941,7 +955,7 @@ void async_websocket_server::container_payload_producer(std::size_t containerSiz
 		if (!m_payload_queue.push(sc_ptr)) { // Container could not be added to the queue
 			if(this->m_server_stopped) break;
 			produce_new_container = false;
-			std::this_thread::sleep_for(5ms);
+			std::this_thread::sleep_for(std::chrono::milliseconds(full_queue_sleep_ms));
 		} else {
 			produce_new_container = true;
 		}
@@ -950,7 +964,10 @@ void async_websocket_server::container_payload_producer(std::size_t containerSiz
 
 /******************************************************************************************/
 
-void async_websocket_server::sleep_payload_producer(double sleep_time) {
+void async_websocket_server::sleep_payload_producer(
+	double sleep_time
+	, std::size_t full_queue_sleep_ms
+) {
 	bool produce_new_container = true;
 	sleep_payload *sp_ptr = nullptr;
 	while (!this->m_server_stopped) {
@@ -965,7 +982,7 @@ void async_websocket_server::sleep_payload_producer(double sleep_time) {
 		if (!m_payload_queue.push(sp_ptr)) { // Container could not be added to the queue
 			if(this->m_server_stopped) break;
 			produce_new_container = false;
-			std::this_thread::sleep_for(5ms);
+			std::this_thread::sleep_for(std::chrono::milliseconds(full_queue_sleep_ms));
 		} else {
 			produce_new_container = true;
 		}
