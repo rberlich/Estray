@@ -208,7 +208,6 @@ command_container::~command_container() {
 
 command_container& command_container::operator=(command_container&& cp) noexcept {
 	m_command = cp.m_command; cp.m_command = payload_command::NONE;
-
 	if(m_payload_ptr) delete m_payload_ptr;
 	m_payload_ptr = cp.m_payload_ptr; cp.m_payload_ptr = nullptr;
 
@@ -237,7 +236,7 @@ void command_container::set_command(payload_command command) {
 
 /******************************************************************************************/
 
-payload_command command_container::get_command() const {
+payload_command command_container::get_command() const noexcept {
 	return m_command;
 }
 

@@ -66,6 +66,7 @@ const unsigned short DEFAULTPORT = 10000;
 const std::size_t    DEFAULTFULLQUEUESLEEPMS = 5;
 const std::size_t    DEFAULTMAXQUEUESIZE = 5000;
 const std::string    DEFAULTHOST = "127.0.0.1"; // localhost // NOLINT
+const std::size_t    DEFAULTPINGINTERVALINT = 15;
 
 /******************************************************************************************/
 
@@ -81,6 +82,7 @@ int main(int argc, char **argv) {
 	std::size_t    max_queue_size = DEFAULTMAXQUEUESIZE;
 	unsigned short port = DEFAULTPORT;
 	std::string    host = DEFAULTHOST;
+	std::size_t    ping_interval = DEFAULTPINGINTERVALINT;
 
 	try {
 		po::options_description desc("Available options");
@@ -89,7 +91,7 @@ int main(int argc, char **argv) {
 			(
 				"client", po::value<bool>(&is_client)->default_value(false)->implicit_value(true)
 				, "Determine whether this is a client or server (the default)")
-			(  "payload_type", po::value<payload_type>(&pType)->default_value(DEFAULTPAYLOADTYPE)
+			(  "payload_type,p", po::value<payload_type>(&pType)->default_value(DEFAULTPAYLOADTYPE)
 			   , R"(The type of payload to be used for the measurements. 0: "container_payload", 1: "sleep_payload".)")
 			(
 				"container_size,s", po::value<std::size_t>(&container_size)->default_value(DEFAULTCONTAINERSIZE)
@@ -109,6 +111,8 @@ int main(int argc, char **argv) {
 			   , "The amount of milliseconds a payload producer should pause when the queue is full")
 			(  "max_queue_size,q", po::value<std::size_t>(&max_queue_size)->default_value(DEFAULTMAXQUEUESIZE)
 			   , "The maximum size of the payload queue")
+			(  "ping_interval,i", po::value<std::size_t>(&ping_interval)->default_value(DEFAULTPINGINTERVALINT)
+			   , "The number of seconds between two consecutive pings sent by a server session")
 			(
 				"port", po::value<unsigned short>(&port)->default_value(DEFAULTPORT)
 				, "The port to which a client should connect or on which the server should listen")
@@ -143,6 +147,7 @@ int main(int argc, char **argv) {
 				, payload_sleep_time
 				, full_queue_sleep_ms
 				, max_queue_size
+				, ping_interval
 			)->run();
 			auto end = std::chrono::system_clock::now();
 

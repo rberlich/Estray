@@ -46,15 +46,10 @@
 #define EVALUATOR_PAYLOAD_HPP
 
 // Standard headers go here
-#include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <sstream>
-#include <ctime>
-#include <cstdio>
-#include <cstdint>
 #include <memory>
 #include <random>
 #include <algorithm>
@@ -165,7 +160,7 @@ public:
 
 	 // Access to the command
 	 void set_command(payload_command);
-	 payload_command get_command() const;
+	 payload_command get_command() const noexcept;
 
 	 // Processing of the payload (if any)
 	 void process();

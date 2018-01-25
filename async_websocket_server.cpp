@@ -351,15 +351,17 @@ void async_websocket_client::do_close(close_code cc) {
 async_websocket_server_session::async_websocket_server_session(
 	boost::asio::ip::tcp::socket socket
 	, std::function<bool(payload_base*& plb_ptr)> get_next_payload_item
-	, std::function<bool()> check_stopped
-	, std::function<void(bool)> sign_on
+	, std::function<bool()> check_server_stopped
+	, std::function<void(bool)> server_sign_on
+	, std::size_t ping_interval
 )
 	: m_ws(std::move(socket))
 	, m_strand(m_ws.get_executor())
+	, m_ping_interval(std::chrono::seconds(ping_interval))
 	, m_timer(m_ws.get_executor().context(), (std::chrono::steady_clock::time_point::max)())
 	, m_get_next_payload_item(std::move(get_next_payload_item))
-	, m_check_stopped(std::move(check_stopped))
-	, m_sign_on(std::move(sign_on))
+	, m_check_server_stopped(std::move(check_server_stopped))
+	, m_server_sign_on(std::move(server_sign_on))
 {
 	// Set the auto_fragment option, so control frames are delivered timely
 	m_ws.auto_fragment(true);
@@ -471,7 +473,7 @@ void async_websocket_server_session::when_timer_fired(boost::system::error_code 
 	} else {
 		m_ping_state = ping_state::CONNECTION_IS_STALE;
 
-		if(!this->m_check_stopped()) {
+		if(!this->m_check_server_stopped()) {
 			// Either this is a stale connection or the SENDING_PING flag is still set
 			std::cout
 				<< "async_websocket_server_session::when_timer_fired(): Connection is dead: " << m_ping_state << std::endl;
@@ -509,7 +511,7 @@ void async_websocket_server_session::when_connection_accepted(boost::system::err
 	}
 
 	// Make it known to the server that a new session is alive
-	m_sign_on(true);
+	m_server_sign_on(true);
 
 	// Start reading an incoming message. This
 	// call will return immediately.
@@ -602,7 +604,7 @@ void async_websocket_server_session::when_written(
 	// Clear the outgoing message -- no longer needed
 	m_outgoing_message.clear();
 
-	if(this->m_check_stopped()) {
+	if(this->m_check_server_stopped()) {
 		std::cout << "Server is stopped" << std::endl;
 		// Do not continue if a stop criterion was reached
 		do_close(boost::beast::websocket::close_code::normal);
@@ -650,7 +652,7 @@ void async_websocket_server_session::do_close(boost::beast::websocket::close_cod
 	}
 
 	// Make it known to the server that a session is leaving
-	m_sign_on(false);
+	m_server_sign_on(false);
 }
 
 /******************************************************************************************/
@@ -728,6 +730,7 @@ async_websocket_server::async_websocket_server(
 	, double sleep_time
 	, std::size_t full_queue_sleep_ms
 	, std::size_t max_queue_size
+	, std::size_t ping_interval
 )
 	: m_endpoint(boost::asio::ip::make_address(address), port)
    , m_n_listener_threads(n_context_threads>0?n_context_threads:std::thread::hardware_concurrency())
@@ -738,6 +741,7 @@ async_websocket_server::async_websocket_server(
 	, m_sleep_time(sleep_time)
 	, m_full_queue_sleep_ms(full_queue_sleep_ms)
 	, m_max_queue_size(max_queue_size)
+	, m_ping_interval(ping_interval)
 	, m_payload_queue{m_max_queue_size}
 { /* nothing */ }
 
@@ -891,6 +895,7 @@ void async_websocket_server::when_accepted(boost::system::error_code ec) {
 
 				std::cout << this->m_n_active_sessions << " active sessions" << std::endl;
 			}
+			, m_ping_interval
 		)->async_start_run();
 	}
 

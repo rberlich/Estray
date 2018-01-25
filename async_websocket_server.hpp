@@ -46,13 +46,10 @@
 #define EVALUATOR_SERVER_HPP
 
 // Standard headers go here
-#include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <sstream>
-#include <ctime>
 #include <memory>
 #include <utility>
 #include <algorithm>
@@ -196,6 +193,7 @@ public:
 		 , std::function<bool(payload_base*& plb_ptr)> /* get_next_payload_item */
 		 , std::function<bool()> /* check_stopped */
 		 , std::function<void(bool)> /* sign_on */
+		 , std::size_t /* ping_interval */
 	 );
 
 	 // The destructor
@@ -249,18 +247,18 @@ private:
 
 	 std::function<bool(payload_base*& plb_ptr)> m_get_next_payload_item;
 
-	 const std::chrono::seconds m_ping_interval{DEFAULTPINGINTERVAL}; // Time between two pings in seconds
+	 std::chrono::seconds m_ping_interval{DEFAULTPINGINTERVAL}; // Time between two pings in seconds
 	 boost::asio::steady_timer m_timer;
 	 std::atomic<ping_state> m_ping_state{ping_state::CONNECTION_IS_ALIVE};
 	 const boost::beast::websocket::ping_data m_ping_data{};
 
 	 command_container m_command_container{payload_command::NONE, nullptr}; ///< Holds the current command and payload (if any)
 
-	 std::function<bool()> m_check_stopped;
+	 std::function<bool()> m_check_server_stopped;
 	 boost::beast::websocket::close_code m_close_code
 		 = boost::beast::websocket::close_code::normal; ///< Holds the close code when terminating the connection
 
-	 std::function<void(bool)> m_sign_on;
+	 std::function<void(bool)> m_server_sign_on;
 
 	 // --------------------------------------------------------------
 };
@@ -291,6 +289,7 @@ public:
 	 	 , double /* sleep_time */
 		 , std::size_t /* full_queue_sleep_ms */
 	 	 , std::size_t /* max_queue_size */
+		 , std::size_t /* ping_interval */
 	 );
 
 	 void run();
@@ -333,6 +332,7 @@ private:
 	 const std::size_t m_n_max_packages_served;
 	 const std::size_t m_full_queue_sleep_ms = 5;
 	 const std::size_t m_max_queue_size = 5000;
+	 const std::size_t m_ping_interval = 15;
 
 	 std::atomic<bool> m_server_stopped{false};
 
