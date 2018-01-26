@@ -265,7 +265,7 @@ void async_websocket_client::when_read(
 	if(ec) {
 		std::cout
 			<< "In async_websocket_client::when_read():" << std::endl
-			<< "Got ec(\"" << ec.message() << "\"). async_start_write() will not be executed." << std::endl
+			<< "Got ec(\"" << ec.message() << "\"). No  more processing will take place" << std::endl
 			<< "This will terminate the client." << std::endl;
 
 		// Give the audience a hint why we are terminating
