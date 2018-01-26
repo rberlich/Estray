@@ -51,9 +51,11 @@
 async_websocket_client::async_websocket_client(
 	const std::string& address
 	, unsigned short port
+	, bool verbose_control_frames
 )
 	: m_address(address)
    , m_port(port)
+	, m_verbose_control_frames(verbose_control_frames)
 {
 	// Set the auto_fragment option, so control frames are delivered timely
 	m_ws.auto_fragment(true);
@@ -65,10 +67,14 @@ async_websocket_client::async_websocket_client(
 	// Set a control-frame callback
 	f_when_control_frame_arrived
 		= [this](frame_type frame_t, string_view s) {
-		if(
-			boost::beast::websocket::frame_type::close==frame_t
-		) {
-			std::cout << "Client has received a close frame" << std::endl;
+		if(this->m_verbose_control_frames) {
+			if (boost::beast::websocket::frame_type::close == frame_t) {
+				std::cout << "Client has received a close frame" << std::endl;
+			} else if (boost::beast::websocket::frame_type::ping == frame_t) {
+				std::cout << "Client has received a ping frame" << std::endl;
+			} else if (boost::beast::websocket::frame_type::pong == frame_t) {
+				std::cout << "Client has received a pong frame" << std::endl;
+			}
 		}
 	};
 
@@ -93,11 +99,19 @@ void async_websocket_client::run() {
 		}
 	);
 
+	// We need an additional thread for the processing of incoming work items
+	std::thread processing_thread (
+		[this]() {
+			this->m_io_context.run();
+		}
+	);
+
 	// This call will block until no more work remains in the ASIO work queue
 	m_io_context.run();
 
 	// Finally close all outstanding connections
 	std::cout << "async_websocket_client::async_start_run(): Closing down remaining connections" << std::endl;
+	processing_thread.join();
 	do_close(m_close_code);
 }
 
@@ -146,7 +160,7 @@ void async_websocket_client::when_connected(boost::system::error_code ec) {
 		return;
 	}
 
-	// Perform the handshake
+	// Perform the websocket handshake
 	auto self = shared_from_this();
 	m_ws.async_handshake(
 		m_address
@@ -174,8 +188,14 @@ void async_websocket_client::when_handshake_complete(boost::system::error_code e
 	}
 
 	// Send the first command to the server
-	m_command_container.reset(payload_command::GETDATA);
-	async_start_write(m_command_container.to_string());
+	async_start_write(
+		m_command_container.reset(
+			payload_command::GETDATA
+		).to_string()
+	);
+
+	// Start the read cycle -- it will keep itself alife
+	async_start_read();
 }
 
 /******************************************************************************************/
@@ -207,7 +227,7 @@ void async_websocket_client::when_written(
 	if(ec) {
 		std::cout
 			<< "In async_websocket_client::when_written():" << std::endl
-			<< "Got ec(\"" << ec.message() << "\"). async_start_read() will not be executed." << std::endl
+			<< "Got ec(\"" << ec.message() << "\")." << std::endl
 			<< "This will terminate the client." << std::endl;
 
 		// Give the audience a hint why we are terminating
@@ -219,9 +239,6 @@ void async_websocket_client::when_written(
 
 	// Clear the outgoing message -- no longer needed
 	m_outgoing_message.clear();
-
-	// Read the next message
-	async_start_read();
 }
 
 /******************************************************************************************/
@@ -261,7 +278,20 @@ void async_websocket_client::when_read(
 	// Deal with the message and send a response back. Processing
 	// of work items is done inside of process_request().
 	try {
-		async_start_write(process_request());
+		// Start asynchronous processing of the work item.
+		// As we need to keep the read-cycle alife in parallel,
+		// this requires that the io_context::run()-function is
+		// started in at least two threads.
+		auto self = shared_from_this();
+		m_io_context.post(
+			[self]() {
+				self->process_request();
+			}
+		);
+
+		// Start a new read cycle so we may react to control frames
+		// (in particular ping and close)
+		async_start_read();
 	} catch(...) {
 		// Give the audience a hint why we are terminating
 		m_close_code = boost::beast::websocket::close_code::internal_error;
@@ -270,7 +300,7 @@ void async_websocket_client::when_read(
 
 /******************************************************************************************/
 
-std::string async_websocket_client::process_request() {
+void async_websocket_client::process_request() {
 	// Extract the string from the buffer
 	auto message = boost::beast::buffers_to_string(m_incoming_buffer.data());
 
@@ -316,7 +346,7 @@ std::string async_websocket_client::process_request() {
 	}
 
 	// Serialize the object again and return the result
-	return m_command_container.to_string();
+	async_start_write(m_command_container.to_string());
 }
 
 /******************************************************************************************/
@@ -354,14 +384,16 @@ async_websocket_server_session::async_websocket_server_session(
 	, std::function<bool()> check_server_stopped
 	, std::function<void(bool)> server_sign_on
 	, std::size_t ping_interval
+	, bool verbose_control_frames
 )
 	: m_ws(std::move(socket))
 	, m_strand(m_ws.get_executor())
-	, m_ping_interval(std::chrono::seconds(ping_interval))
 	, m_timer(m_ws.get_executor().context(), (std::chrono::steady_clock::time_point::max)())
 	, m_get_next_payload_item(std::move(get_next_payload_item))
 	, m_check_server_stopped(std::move(check_server_stopped))
 	, m_server_sign_on(std::move(server_sign_on))
+   , m_ping_interval(std::chrono::seconds(ping_interval))
+	, m_verbose_control_frames(verbose_control_frames)
 {
 	// Set the auto_fragment option, so control frames are delivered timely
 	m_ws.auto_fragment(true);
@@ -395,6 +427,18 @@ void async_websocket_server_session::async_start_run() {
 		) {
 			// Note that the connection is alive
 			this->m_ping_state = ping_state::CONNECTION_IS_ALIVE;
+		}
+
+		// Let the audience know what type of control frame we have received
+		// if the user has requested it.
+		if(this->m_verbose_control_frames) {
+			if (boost::beast::websocket::frame_type::close == frame_t) {
+				std::cout << "Server session has received a close frame" << std::endl;
+			} else if (boost::beast::websocket::frame_type::ping == frame_t) {
+				std::cout << "Server session has received a ping frame" << std::endl;
+			} else if (boost::beast::websocket::frame_type::pong == frame_t) {
+				std::cout << "Server session has received a pong frame" << std::endl;
+			}
 		}
 	};
 
@@ -731,6 +775,7 @@ async_websocket_server::async_websocket_server(
 	, std::size_t full_queue_sleep_ms
 	, std::size_t max_queue_size
 	, std::size_t ping_interval
+	, bool verbose_control_frames
 )
 	: m_endpoint(boost::asio::ip::make_address(address), port)
    , m_n_listener_threads(n_context_threads>0?n_context_threads:std::thread::hardware_concurrency())
@@ -742,6 +787,7 @@ async_websocket_server::async_websocket_server(
 	, m_full_queue_sleep_ms(full_queue_sleep_ms)
 	, m_max_queue_size(max_queue_size)
 	, m_ping_interval(ping_interval)
+	, m_verbose_control_frames(verbose_control_frames)
 	, m_payload_queue{m_max_queue_size}
 { /* nothing */ }
 
@@ -896,6 +942,7 @@ void async_websocket_server::when_accepted(boost::system::error_code ec) {
 				std::cout << this->m_n_active_sessions << " active sessions" << std::endl;
 			}
 			, m_ping_interval
+			, m_verbose_control_frames
 		)->async_start_run();
 	}
 

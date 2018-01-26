@@ -27,6 +27,8 @@ _Open Questions and Work Items:_
 
 * The server-sessions need to interact with the server-object (e.g. check for stop-conditions, get payload objects from the queue held in the server object, ...). The necessary callbacks are handed to the session-constructors and are stored in the session object. This works o.k., but I wonder whether there are cleaner ways to do this (e.g. Boost.Signal2 ?)
 * There is a lot of probably unnecessary copying of strings, which slows things down. It would be great if this could be replaced with string_view
+* Sometimes, when a server is terminated, starting it again on the same port results in the error message "port is already in use"
+ - The demo should use ASIOs means to deal with signals portably
 
 _Caveats:_
 

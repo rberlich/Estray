@@ -216,7 +216,7 @@ command_container& command_container::operator=(command_container&& cp) noexcept
 
 /******************************************************************************************/
 
-void command_container::reset(
+const command_container& command_container::reset(
 	payload_command command
 	, payload_base *payload_ptr
 ) {
@@ -226,6 +226,8 @@ void command_container::reset(
 		delete m_payload_ptr;
 	}
 	m_payload_ptr = payload_ptr;
+
+	return *this;
 }
 
 /******************************************************************************************/

@@ -156,7 +156,7 @@ public:
 	 command_container& operator=(const command_container&) = delete;
 
 	 // Reset to a new command and payload or clear the object
-	 void reset(payload_command=payload_command::NONE, payload_base * = nullptr);
+	 const command_container& reset(payload_command=payload_command::NONE, payload_base * = nullptr);
 
 	 // Access to the command
 	 void set_command(payload_command);

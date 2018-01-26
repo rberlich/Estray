@@ -83,6 +83,7 @@ int main(int argc, char **argv) {
 	unsigned short port = DEFAULTPORT;
 	std::string    host = DEFAULTHOST;
 	std::size_t    ping_interval = DEFAULTPINGINTERVALINT;
+	bool           verbose_control_frames = false;
 
 	try {
 		po::options_description desc("Available options");
@@ -113,6 +114,8 @@ int main(int argc, char **argv) {
 			   , "The maximum size of the payload queue")
 			(  "ping_interval,i", po::value<std::size_t>(&ping_interval)->default_value(DEFAULTPINGINTERVALINT)
 			   , "The number of seconds between two consecutive pings sent by a server session")
+			(  "verbose_control_frames,v", po::value<bool>(&verbose_control_frames)->default_value(false)->implicit_value(true)
+			   , "Whether sending and arrival of ping/pong and receipt of a close frame should be announced by client and server")
 			(
 				"port", po::value<unsigned short>(&port)->default_value(DEFAULTPORT)
 				, "The port to which a client should connect or on which the server should listen")
@@ -132,7 +135,7 @@ int main(int argc, char **argv) {
 
 		if (is_client) { // We are a client
 			// Use std::make_shared so shared_from_this works
-			std::make_shared<async_websocket_client>(host, port)->run();
+			std::make_shared<async_websocket_client>(host, port, verbose_control_frames)->run();
 		} else { // We are a server
 			auto start = std::chrono::system_clock::now();
 			// Start the actual server and measure its runtime in milliseconds
@@ -148,6 +151,7 @@ int main(int argc, char **argv) {
 				, full_queue_sleep_ms
 				, max_queue_size
 				, ping_interval
+				, verbose_control_frames
 			)->run();
 			auto end = std::chrono::system_clock::now();
 

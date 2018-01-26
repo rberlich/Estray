@@ -94,7 +94,18 @@
 /******************************************************************************************/
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
-
+/**
+ * This client aims to always keep a read-operation active, so that it may react properly to
+ * ping- and close-frames. User-initiated reads, writes and processing are NOT protected by
+ * a strand, as the protocol between client and server-session is still serial, in the sense
+ * that operations on command containers are always triggered first by the client. So a
+ * user-initiated write on the client side is followed by a user-initiated read on the server
+ * side, then a user-initated write on the server side and a user-initiated read on the client
+ * side. Control-frames (in particular pings and pongs) are sent back and forth in the background
+ * and are protected by the implementation. It is crucial for this lack of protection that
+ * the server-session side of the implementation remains serial. This is achieved by starting
+ * a write only from the read-completion handler and vice versa.
+ */
 class async_websocket_client final
 	: public std::enable_shared_from_this<async_websocket_client>
 {
@@ -113,7 +124,7 @@ public:
 	 // External "API"
 
 	 // Initialization with host/ip and port
-	 async_websocket_client(const std::string&, unsigned short);
+	 async_websocket_client(const std::string&, unsigned short, bool = false);
 	 // Starts the main async_start_run-loop
 	 void run();
 
@@ -140,7 +151,7 @@ private:
 	 void when_written(error_code, std::size_t);
 	 void when_read(error_code, std::size_t);
 
-	 std::string process_request();
+	 void process_request();
 
 	 void do_close(boost::beast::websocket::close_code);
 
@@ -156,6 +167,7 @@ private:
 
 	 std::string m_address;
 	 unsigned int m_port;
+	 bool m_verbose_control_frames = false;
 
 	 boost::beast::multi_buffer m_incoming_buffer;
 	 std::string m_outgoing_message;
@@ -174,7 +186,13 @@ private:
 /******************************************************************************************/
 ////////////////////////////////////////////////////////////////////////////////////////////
 /******************************************************************************************/
-
+/**
+ * An instance of this class is started by the server for each new client connection.
+ * The protocol implemented on the server-session side is in essence serial, i.e. despite
+ * the usage of async calls, a write is only started by the read completion-handler and
+ * vice versa. This is essential to avoid having to add strands and protection against
+ * concurrent access on the client side.
+ */
 class async_websocket_server_session final
 	: public std::enable_shared_from_this<async_websocket_server_session>
 {
@@ -194,6 +212,7 @@ public:
 		 , std::function<bool()> /* check_stopped */
 		 , std::function<void(bool)> /* sign_on */
 		 , std::size_t /* ping_interval */
+		 , bool /* verbose_control_frames */
 	 );
 
 	 // The destructor
@@ -248,6 +267,7 @@ private:
 	 std::function<bool(payload_base*& plb_ptr)> m_get_next_payload_item;
 
 	 std::chrono::seconds m_ping_interval{DEFAULTPINGINTERVAL}; // Time between two pings in seconds
+	 bool m_verbose_control_frames = false; // Whether the control_callback should emit information when a control frame is received
 	 boost::asio::steady_timer m_timer;
 	 std::atomic<ping_state> m_ping_state{ping_state::CONNECTION_IS_ALIVE};
 	 const boost::beast::websocket::ping_data m_ping_data{};
@@ -290,6 +310,7 @@ public:
 		 , std::size_t /* full_queue_sleep_ms */
 	 	 , std::size_t /* max_queue_size */
 		 , std::size_t /* ping_interval */
+		 , bool /* verbose_control_frames */
 	 );
 
 	 void run();
@@ -333,6 +354,7 @@ private:
 	 const std::size_t m_full_queue_sleep_ms = 5;
 	 const std::size_t m_max_queue_size = 5000;
 	 const std::size_t m_ping_interval = 15;
+	 bool  m_verbose_control_frames = false; // Whether the control_callback should emit information when a control frame is received
 
 	 std::atomic<bool> m_server_stopped{false};
 
