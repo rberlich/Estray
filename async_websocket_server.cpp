@@ -407,11 +407,6 @@ async_websocket_server_session::async_websocket_server_session(
 
 void async_websocket_server_session::async_start_run() {
 	// --------------------------------------------------------------------------
-	// Connections and communication
-
-	async_start_accept();
-
-	// --------------------------------------------------------------------------
 	// Prepare ping cycle. It must start after the handshake, upon whose
 	// completion the when_connection_accepted() function is called.
 	// async_start_ping() is executed from there.
@@ -444,6 +439,11 @@ void async_websocket_server_session::async_start_run() {
 
 	// Set the callback to be executed on every incoming control frame.
 	m_ws.control_callback(f_when_control_frame_arrived);
+
+	// --------------------------------------------------------------------------
+	// Connections and communication
+
+	async_start_accept();
 
 	// --------------------------------------------------------------------------
 	// This function will terminate shortly after it was called, as all operations
