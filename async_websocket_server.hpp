@@ -60,7 +60,7 @@
 #include <cassert>
 
 // Boost headers go here
-// #include <boost/spirit/include/qi.hpp>
+#include <boost/spirit/include/qi.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/rfc6455.hpp>

@@ -407,6 +407,22 @@ async_websocket_server_session::async_websocket_server_session(
 
 void async_websocket_server_session::async_start_run() {
 	// --------------------------------------------------------------------------
+	// Make sure we run on the correct strand. Fixes a problem flagged in this
+	// post: https://github.com/boostorg/beast/issues/1073 . Follows the "advanced_server"
+	// example of Beast.
+	if(! m_strand.running_in_this_thread()) {
+		auto self = shared_from_this();
+		return boost::asio::post(
+			boost::asio::bind_executor(
+				m_strand
+				, [self]() {
+					self->async_start_run();
+				}
+			)
+		);
+	}
+
+	// --------------------------------------------------------------------------
 	// Prepare ping cycle. It must start after the handshake, upon whose
 	// completion the when_connection_accepted() function is called.
 	// async_start_ping() is executed from there.
@@ -806,21 +822,21 @@ void async_websocket_server::run() {
 	// Open the acceptor
 	m_acceptor.open(m_endpoint.protocol(), ec);
 	if(ec || !m_acceptor.is_open()) {
-		if(ec) { std::cerr << "async_start_run/m_acceptor.open: " << ec.message() << std::endl; }
+		if(ec) { std::cerr << "async_start_run/m_acceptor.open(): " << ec.message() << std::endl; }
 		return;
 	}
 
 	// Bind to the server address
 	m_acceptor.bind(m_endpoint, ec);
 	if(ec) {
-		std::cerr << "async_start_run/m_acceptor.bind: " << ec.message() << std::endl;
+		std::cerr << "async_start_run/m_acceptor.bind(): " << ec.message() << std::endl;
 		return;
 	}
 
 	// Start listening for connections
 	m_acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
 	if(ec) {
-		std::cerr << "async_start_run/m_acceptor.listen: " << ec.message() << std::endl;
+		std::cerr << "async_start_run/m_acceptor.listen(): " << ec.message() << std::endl;
 		return;
 	}
 
