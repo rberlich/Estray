@@ -6,8 +6,8 @@ Payload-items are constantly produced by a configurable number of threads and ad
 
 _Two payloads have been implemented:_
 
-* `container_payload` wraps a `std::vector` of objects holding a random number. Calling `process()` sorts the vector according to the values in the random number objects. The default size of the vector is 1000 objects, so that serialization is sufficiently complex to simulate a real work load. Processing (sorting) on the client side will take in the range of milliseconds, though, so that this payload may be used to test the case of very short client runtimes combined with frequent, comparatively large network transfers. This may serve as an indication of the worst case performance.
-* `sleep_payload` does the opposite: The `process()` call sleeps for a configurable number of seconds before returning. Except for the sleep duration, the payload objects are empty, so that network transfers are short and very little effort is needed for serialization of the work item. This can be used to test the best case, i.e. long "processing" times on the client side with inexpensive transfers. While the `container_payload` performance may be dominated by the available CPU-power and network speed, the `sleep_payload` will likely be dominated by the performance of the websocket implementation.
+* `random_container_payload` wraps a `std::vector` of objects holding a random number. Calling `process()` sorts the vector according to the values in the random number objects. The default size of the vector is 1000 objects, so that serialization is sufficiently complex to simulate a real work load. Processing (sorting) on the client side will take in the range of milliseconds, though, so that this payload may be used to test the case of very short client runtimes combined with frequent, comparatively large network transfers. This may serve as an indication of the worst case performance.
+* `sleep_payload` does the opposite: The `process()` call sleeps for a configurable number of seconds before returning. Except for the sleep duration, the payload objects are empty, so that network transfers are short and very little effort is needed for serialization of the work item. This can be used to test the best case, i.e. long "processing" times on the client side with inexpensive transfers. While the `random_container_payload` performance may be dominated by the available CPU-power and network speed, the `sleep_payload` will likely be dominated by the performance of the websocket implementation.
 
 Varying the vector size or the sleep time may help to calculate possible speedups under different scenarios, and might be useful for finding more efficient ways of using Boost.Beast and Boost.Serialization as well as exchanging larger workloads.
 
@@ -21,11 +21,11 @@ The code is made available under the terms of the Boost Software License in vers
 
 See each file for the licensing information.
 
-To get started, on a single Linux machine, call `Estray` without arguments (this will be the server) and with the argument `--client` in another shell. This will create a client-server communication using the `container_payload` and a single client. See the `scripts/startClients.sh` script for information on how to start multiple clients. The command-line option `--help` will show you additional options.
+To get started, on a single Linux machine, call `Estray` without arguments (this will be the server) and with the argument `--client` in another shell. This will create a client-server communication using the `random_container_payload` and a single client. See the `scripts/startClients.sh` script for information on how to start multiple clients. The command-line option `--help` will show you additional options.
 
 _Open Questions and Work Items:_
 
-* The server-sessions need to interact with the server-object (e.g. check for stop-conditions, get payload objects from the queue held in the server object, ...). The necessary callbacks are handed to the session-constructors and are stored in the session object. This works o.k., but I wonder whether there are cleaner ways to do this (e.g. Boost.Signal2 ?)
+* The server-sessions need to interact with the server-object (e.g. check for stop-conditions, get payload objects from the queue held in the server object, ...). The necessary callbacks are handed to the async_websocket_client-constructors and are stored in the async_websocket_client object. This works o.k., but I wonder whether there are cleaner ways to do this (e.g. Boost.Signal2 ?)
 * There is a lot of probably unnecessary copying of strings, which slows things down. It would be great if this could be replaced with string_view
 * Sometimes, when a server is terminated, starting it again on the same port results in the error message "port is already in use"
  - The demo should use ASIOs means to deal with signals portably

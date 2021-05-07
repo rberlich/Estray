@@ -4,7 +4,7 @@ project(Estray)
 set(BOOST_ROOT /opt/boost)
 find_package(
     Boost
-    1.66 REQUIRED
+    1.75 REQUIRED
     COMPONENTS
     system
     program_options
@@ -22,14 +22,13 @@ LINK_DIRECTORIES(
 
 # You may use different encoding types for the payloads here: BINARYARCHIVE, XMLARCHIVE and TEXTARCHIVE,
 # implemented via the typical Boost.Serialization archives. Use -DDEBUG to switch on additional diagnostic messages.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O3 -DBINARYARCHIVE -pthread")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -g -DBINARYARCHIVE -pthread")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -g -DXMLARCHIVE -pthread")
 
 set(EXEC_SOURCE_FILES
-    async_websocket_server.cpp
     main.cpp
-    misc.cpp
     payload.cpp
-)
+    misc.cpp)
 
 add_executable(Estray ${EXEC_SOURCE_FILES})
 

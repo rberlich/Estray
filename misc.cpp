@@ -36,116 +36,120 @@
  * Author: Dr. Rüdiger Berlich of Gemfony scientific UG (haftungsbeschraenkt)
  * See http://www.gemfony.eu for further information.
  *
- * This code is based on the Beast Websocket library by Vinnie Falco, as published
- * together with Boost 1.66 and above. For further information on Beast, see
- * https://github.com/boostorg/beast for the latest release, or download
- * Boost 1.66 or newer from http://www.boost.org .
+ * This code is based on the Beast Websocket library by Vinnie Falco.
  */
 
 #include "misc.hpp"
 
 /******************************************************************************************/
 
-void set_transfer_mode(boost::beast::websocket::stream<boost::asio::ip::tcp::socket>& ws) {
-	// We need to tell Beast whether we intend to send
-	// text- or binary-messages. Within this evaluator,
-	// this is handled through a #define of BINARYARCHIVE,
-	// XMLARCHIVE or TEXTARCHIVE (via Boost.Serialization)
-	// in the CMakeLists.txt .
+void set_transfer_mode(boost::beast::websocket::stream<boost::beast::tcp_stream> &ws) {
+    // We need to tell Beast whether we intend to send
+    // text- or binary-messages. Within this evaluator,
+    // this is handled through a #define of BINARYARCHIVE,
+    // XMLARCHIVE or TEXTARCHIVE (via Boost.Serialization)
+    // in the CMakeLists.txt .
 #if defined(BINARYARCHIVE)
-	ws.binary(true);
+    ws.binary(true);
+    std::cout << "Set Beast transfer mode to BINARY" << std::endl;
 #elif defined(XMLARCHIVE)
-	ws.text(true);
+    ws.text(true);
+    std::cout << "Set Beast transfer mode to TEXT/XML" << std::endl;
 #elif defined(TEXTARCHIVE)
-	ws.text(true);
+    ws.text(true);
+    std::cout << "Set Beast transfer mode to TEXT/TEXT" << std::endl;
 #else
-	ws.text(true);
+    ws.text(true);
+    std::cout << "Set Beast transfer mode to TEXT/OTHER" << std::endl;
 #endif
 }
 
 /******************************************************************************************/
 
 std::ostream &operator<<(std::ostream &o, const payload_command &ps) {
-	auto tmp = static_cast<ENUMBASETYPE>(ps);
-	o << tmp;
-	return o;
+    auto tmp = static_cast<ENUMBASETYPE>(ps);
+    o << tmp;
+    return o;
 }
 
 /******************************************************************************************/
 
 std::istream &operator>>(std::istream &i, payload_command &ps) {
-	ENUMBASETYPE tmp;
-	i >> tmp;
+    ENUMBASETYPE tmp;
+    i >> tmp;
 
 #ifdef DEBUG
-	ps = boost::numeric_cast<payload_command>(tmp);
+    ps = boost::numeric_cast<payload_command>(tmp);
 #else
-	ps = static_cast<payload_command>(tmp);
+    ps = static_cast<payload_command>(tmp);
 #endif /* DEBUG */
 
-	return i;
+    return i;
 }
 
 /******************************************************************************************/
 
 std::ostream &operator<<(std::ostream &o, const ping_state &ps) {
-	auto tmp = static_cast<ENUMBASETYPE>(ps);
-	o << tmp;
-	return o;
+    auto tmp = static_cast<ENUMBASETYPE>(ps);
+    o << tmp;
+    return o;
 }
 
 /******************************************************************************************/
 
 std::istream &operator>>(std::istream &i, ping_state &ps) {
-	ENUMBASETYPE tmp;
-	i >> tmp;
+    ENUMBASETYPE tmp;
+    i >> tmp;
 
 #ifdef DEBUG
-	ps = boost::numeric_cast<ping_state>(tmp);
+    ps = boost::numeric_cast<ping_state>(tmp);
 #else
-	ps = static_cast<ping_state>(tmp);
+    ps = static_cast<ping_state>(tmp);
 #endif /* DEBUG */
 
-	return i;
+    return i;
 }
 
 /******************************************************************************************/
 
 std::ostream &operator<<(std::ostream &o, const payload_type &am) {
-	auto tmp = static_cast<ENUMBASETYPE>(am);
-	o << tmp;
-	return o;
+    auto tmp = static_cast<ENUMBASETYPE>(am);
+    o << tmp;
+    return o;
 }
 
 /******************************************************************************************/
 
 std::istream &operator>>(std::istream &i, payload_type &am) {
-	ENUMBASETYPE tmp;
-	i >> tmp;
+    ENUMBASETYPE tmp;
+    i >> tmp;
 
 #ifdef DEBUG
-	am = boost::numeric_cast<payload_type>(tmp);
+    am = boost::numeric_cast<payload_type>(tmp);
 #else
-	am = static_cast<payload_type>(tmp);
+    am = static_cast<payload_type>(tmp);
 #endif /* DEBUG */
 
-	return i;
+    return i;
 }
 
 /******************************************************************************************/
 
+/**
+ * Creation of a fixed-width command-string to be transmitted between client and server
+ */
 std::string text_command_string(const std::string &cmd, std::size_t command_length) {
 #ifdef DEBUG
-	if(cmd.size() > command_length) {
-		throw std::runtime_error(
-			"text_command_string: command_length is too large: " + std::to_string(cmd.size()) + " Expected " + std::to_string(command_length)
-		);
-	}
+    if(cmd.size() > command_length) {
+        throw std::runtime_error(
+            "text_command_string: command_length is too large: " + std::to_string(cmd.size()) + " Expected " + std::to_string(command_length)
+        );
+    }
 #endif
 
-	std::ostringstream command_stream;
-	command_stream << std::setw(boost::numeric_cast<int>(command_length)) << cmd;
-	return command_stream.str();
+    std::ostringstream command_stream;
+    command_stream << std::setw(boost::numeric_cast<int>(command_length)) << cmd;
+    return command_stream.str();
 }
 
 /******************************************************************************************/

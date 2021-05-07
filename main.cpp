@@ -36,10 +36,7 @@
  * Author: Dr. Rüdiger Berlich of Gemfony scientific UG (haftungsbeschraenkt)
  * See http://www.gemfony.eu for further information.
  *
- * This code is based on the Beast Websocket library by Vinnie Falco, as published
- * together with Boost 1.66 and above. For further information on Beast, see
- * https://github.com/boostorg/beast for the latest release, or download
- * Boost 1.66 or newer from http://www.boost.org .
+ * This code is based on the Beast Websocket library by Vinnie Falco.
  */
 
 // Standard headers go here
@@ -49,9 +46,7 @@
 #include <vector>
 
 // Boost headers go here
-#include <boost/bind.hpp>
 #include <boost/program_options.hpp>
-#include <boost/filesystem.hpp>
 
 // Application headers go here
 #include "async_websocket_server.hpp"
@@ -66,7 +61,6 @@ const unsigned short DEFAULTPORT = 10000;
 const std::size_t    DEFAULTFULLQUEUESLEEPMS = 5;
 const std::size_t    DEFAULTMAXQUEUESIZE = 5000;
 const std::string    DEFAULTHOST = "127.0.0.1"; // localhost // NOLINT
-const std::size_t    DEFAULTPINGINTERVALINT = 15;
 
 /******************************************************************************************/
 
@@ -82,8 +76,6 @@ int main(int argc, char **argv) {
 	std::size_t    max_queue_size = DEFAULTMAXQUEUESIZE;
 	unsigned short port = DEFAULTPORT;
 	std::string    host = DEFAULTHOST;
-	std::size_t    ping_interval = DEFAULTPINGINTERVALINT;
-	bool           verbose_control_frames = false;
 
 	try {
 		po::options_description desc("Available options");
@@ -112,10 +104,6 @@ int main(int argc, char **argv) {
 			   , "The amount of milliseconds a payload producer should pause when the queue is full")
 			(  "max_queue_size,q", po::value<std::size_t>(&max_queue_size)->default_value(DEFAULTMAXQUEUESIZE)
 			   , "The maximum size of the payload queue")
-			(  "ping_interval,i", po::value<std::size_t>(&ping_interval)->default_value(DEFAULTPINGINTERVALINT)
-			   , "The number of seconds between two consecutive pings sent by a server session")
-			(  "verbose_control_frames,v", po::value<bool>(&verbose_control_frames)->default_value(false)->implicit_value(true)
-			   , "Whether sending and arrival of ping/pong and receipt of a close frame should be announced by client and server")
 			(
 				"port", po::value<unsigned short>(&port)->default_value(DEFAULTPORT)
 				, "The port to which a client should connect or on which the server should listen")
@@ -133,9 +121,9 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 
-		if (is_client) { // We are a client
+		if (is_client) { // We are a client^
 			// Use std::make_shared so shared_from_this works
-			std::make_shared<async_websocket_client>(host, port, verbose_control_frames)->run();
+			std::make_shared<async_websocket_client>(host, port)->run();
 		} else { // We are a server
 			auto start = std::chrono::system_clock::now();
 			// Start the actual server and measure its runtime in milliseconds
@@ -150,8 +138,6 @@ int main(int argc, char **argv) {
 				, payload_sleep_time
 				, full_queue_sleep_ms
 				, max_queue_size
-				, ping_interval
-				, verbose_control_frames
 			)->run();
 			auto end = std::chrono::system_clock::now();
 

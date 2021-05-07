@@ -36,14 +36,10 @@
  * Author: Dr. Rüdiger Berlich of Gemfony scientific UG (haftungsbeschraenkt)
  * See http://www.gemfony.eu for further information.
  *
- * This code is based on the Beast Websocket library by Vinnie Falco, as published
- * together with Boost 1.66 and above. For further information on Beast, see
- * https://github.com/boostorg/beast for the latest release, or download
- * Boost 1.66 or newer from http://www.boost.org .
+ * This code is based on the Beast Websocket library by Vinnie Falco.
  */
 
-#ifndef EVALUATOR_MISC_HPP
-#define EVALUATOR_MISC_HPP
+#pragma once
 
 // Standard headers go here
 #include <string>
@@ -60,53 +56,44 @@
 #include <boost/beast/websocket/rfc6455.hpp>
 #include <boost/exception/all.hpp>
 
-// Our own heders go here
+// Our own headers go here
 // Nothing
 
 /******************************************************************************************/
 
-void set_transfer_mode(boost::beast::websocket::stream<boost::asio::ip::tcp::socket>&);
+void set_transfer_mode(boost::beast::websocket::stream<boost::beast::tcp_stream> &);
+
 const std::chrono::seconds DEFAULTPINGINTERVAL = std::chrono::seconds(5); // NOLINT
 
 /** @brief A basetype used for all enums in the Evaluator */
 using ENUMBASETYPE = unsigned int;
 
 /** @brief Ids of the allowed commands for the Evaluator protocol */
-enum class payload_command: ENUMBASETYPE {
-  GETDATA = 0
-  , NODATA = 1
-  , COMPUTE = 2
-  , RESULT = 3
-  , ERROR = 4
-  , NONE = 5
+enum class payload_command : ENUMBASETYPE {
+    GETDATA = 0, NODATA = 1, COMPUTE = 2, RESULT = 3, ERROR = 4, NONE = 5
 };
 
-std::ostream &operator<<(std::ostream &, const payload_command &);
-std::istream &operator>>(std::istream &, payload_command &);
+
+std::ostream &operator<<(std::ostream &o, const payload_command &ps);
+std::istream &operator>>(std::istream &i, payload_command &ps);
 
 /** @brief Indicates in what state of the ping submission we are */
 enum class ping_state : ENUMBASETYPE {
-	 CONNECTION_IS_ALIVE = 0
-	 , SENDING_PING = 1
-	 , CONNECTION_IS_STALE = 2
+    CONNECTION_IS_ALIVE = 0, SENDING_PING = 1, CONNECTION_IS_STALE = 2
 };
 
-std::ostream &operator<<(std::ostream &, const ping_state &);
-std::istream &operator>>(std::istream &, ping_state &);
+std::ostream &operator<<(std::ostream &o, const ping_state &ps);
+std::istream &operator>>(std::istream &i, ping_state &ps);
 
 /** @brief Indicates which payload type should be used */
 enum class payload_type : ENUMBASETYPE {
-	 container = 0
-	 , sleep = 1
-	 , command = 2
+    container = 0, sleep = 1, command = 2
 };
 
-std::ostream &operator<<(std::ostream &, const payload_type &);
-std::istream &operator>>(std::istream &, payload_type &);
+std::ostream &operator<<(std::ostream &o, const payload_type &am);
+std::istream &operator>>(std::istream &i, payload_type &am);
 
 /** @brief Creation of a fixed-width command-string to be transmitted between client and server */
 std::string text_command_string(const std::string &cmd, std::size_t command_length);
 
 /******************************************************************************************/
-
-#endif /* EVALUATOR_MISC_HPP */
