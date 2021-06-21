@@ -76,6 +76,7 @@ int main(int argc, char **argv) {
 	std::size_t    max_queue_size = DEFAULTMAXQUEUESIZE;
 	unsigned short port = DEFAULTPORT;
 	std::string    host = DEFAULTHOST;
+	std::size_t    client_id = 0;
 
 	try {
 		po::options_description desc("Available options");
@@ -104,12 +105,13 @@ int main(int argc, char **argv) {
 			   , "The amount of milliseconds a payload producer should pause when the queue is full")
 			(  "max_queue_size,q", po::value<std::size_t>(&max_queue_size)->default_value(DEFAULTMAXQUEUESIZE)
 			   , "The maximum size of the payload queue")
-			(
-				"port", po::value<unsigned short>(&port)->default_value(DEFAULTPORT)
+			(  "port", po::value<unsigned short>(&port)->default_value(DEFAULTPORT)
 				, "The port to which a client should connect or on which the server should listen")
-			(
-				"host", po::value<std::string>(&host)->default_value(DEFAULTHOST)
+			(  "host", po::value<std::string>(&host)->default_value(DEFAULTHOST)
 				, "IP or name of the host running the server")
+            (  "client_id" , po::value<std::size_t>(&client_id)->default_value(0)
+                , "A unique id to be assigned to the client to make it distinguishable in the output"
+            )
 			;
 
 		po::variables_map vm;
@@ -121,9 +123,13 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 
-		if (is_client) { // We are a client^
+		if (is_client) { // We are a client
+		    std::cout << "Client with id " << client_id << " is starting up" << std::endl;
+
 			// Use std::make_shared so shared_from_this works
 			std::make_shared<async_websocket_client>(host, port)->run();
+
+            std::cout << "Client with id " << client_id << " has terminated" << std::endl;
 		} else { // We are a server
 			auto start = std::chrono::system_clock::now();
 			// Start the actual server and measure its runtime in milliseconds
@@ -141,7 +147,11 @@ int main(int argc, char **argv) {
 			)->run();
 			auto end = std::chrono::system_clock::now();
 
-			std::cout << "Used " << std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count() << " ms" << std::endl;
+			auto nMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+
+			std::cout
+			    << "Used " << nMilliseconds << " ms" << std::endl
+			    << "This amounts to " << 1000*double(max_n_served)/double(std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count()) << " packages/s" << std::endl;
 		}
 	} catch (std::exception &e) {
 		std::cerr << "Exception in main(): " << e.what() << std::endl;

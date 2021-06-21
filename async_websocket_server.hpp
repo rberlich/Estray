@@ -98,11 +98,6 @@ namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
 namespace net = boost::asio;            // from <boost/asio.hpp>
 
 using tcp = net::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
-using error_code = boost::system::error_code;
-using resolver = net::ip::tcp::resolver;
-using close_code = websocket::close_code;
-using frame_type = websocket::frame_type;
-using string_view = beast::string_view;
 
 /******************************************************************************************/
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -155,6 +150,13 @@ public:
         // Set the transfer mode according to the defines in CMakeLists.txt
         set_transfer_mode(m_ws);
     }
+
+    //--------------------------------------------------------------------------
+
+    ~async_websocket_client() {
+        std::cout << "Processed " << m_package_counter << " packages" << std::endl;
+    }
+
 
     //--------------------------------------------------------------------------
     /**
@@ -307,7 +309,7 @@ private:
             return fail(ec, "when_written");
 
         // We are done. Further writing is triggered by the task processing
-        m_out_buffer.clear();
+        m_out_buffer.consume(m_out_buffer.size());
     }
 
     //--------------------------------------------------------------------------
@@ -331,7 +333,7 @@ private:
                         )
         );
 
-        m_in_buffer.clear(); // We can clear the old message
+        m_in_buffer.consume(m_in_buffer.size()); // We can clear the old message
 
         // Start a new read cycle so we may react to control frames
         // (in particular ping and close)
@@ -380,6 +382,9 @@ private:
 
         // Serialize the object again and return the result
         async_start_write(m_command_container.to_string());
+
+        // Update the package counter so we get an idea how many packages we have processed.
+        m_package_counter++;
     }
 
     //--------------------------------------------------------------------------
@@ -401,6 +406,8 @@ private:
 
     command_container m_command_container{payload_command::NONE,
                                           nullptr}; ///< Holds the current command and payload (if any)
+
+    std::atomic<std::uint32_t> m_package_counter{0};
 
     //--------------------------------------------------------------------------
 };
@@ -496,20 +503,9 @@ private:
     async_start_read() {
         // Read a message into our buffer
         m_ws.async_read(
-                m_buffer,
+                m_in_buffer,
                 beast::bind_front_handler(
                         &async_websocket_server_session::when_read,
-                        shared_from_this()));
-    }
-
-    //--------------------------------------------------------------------------
-
-    void
-    async_start_write() {
-        m_ws.async_write(
-                m_buffer.data(),
-                beast::bind_front_handler(
-                        &async_websocket_server_session::when_written,
                         shared_from_this()));
     }
 
@@ -527,11 +523,22 @@ private:
         if (ec) return do_close(ec, "when_read");
 
         // process the request. This will read out
-        // m_buffer and fill it with new data
+        // m_in_buffer and fill m_out_buffer with new data
         process_request();
 
         // Send the next buffer back
         async_start_write();
+    }
+
+    //--------------------------------------------------------------------------
+
+    void
+    async_start_write() {
+        m_ws.async_write(
+                m_out_buffer.data(),
+                beast::bind_front_handler(
+                        &async_websocket_server_session::when_written,
+                        shared_from_this()));
     }
 
     //--------------------------------------------------------------------------
@@ -544,7 +551,7 @@ private:
             return fail(ec, "when_written");
 
         // Clear the buffer
-        m_buffer.clear();
+        m_out_buffer.consume(m_out_buffer.size());
 
         if (this->f_check_server_stopped()) {
             std::cout << "Server is stopped" << std::endl;
@@ -559,7 +566,7 @@ private:
     //--------------------------------------------------------------------------
 
     std::string getAndSerializeWorkItem() {
-        // Obtain a container_payload object from the queue, serialize it and send it off
+        // Obtain a container_payload object from the queue, serialize and return it
         payload_base *plb_ptr = nullptr;
         if (this->f_get_next_payload_item(plb_ptr) && plb_ptr != nullptr) {
             m_command_container.reset(payload_command::COMPUTE, plb_ptr);
@@ -576,8 +583,8 @@ private:
     void process_request() {
         // De-serialize the object
         try {
-            m_command_container.from_string(beast::buffers_to_string(m_buffer.data()));
-            m_buffer.clear(); // Clear the buffer, so we may later fill it with data to be sent
+            m_command_container.from_string(beast::buffers_to_string(m_in_buffer.data()));
+            m_in_buffer.consume(m_in_buffer.size()); // Clear the buffer, so we may later fill it with data to be sent
         } catch (...) {
             throw std::runtime_error(
                     "async_websocket_server_session::process_request(): Caught exception while de-serializing");
@@ -590,7 +597,7 @@ private:
         switch (inboundCommand) {
             case payload_command::GETDATA:
             case payload_command::ERROR: {
-                boost::beast::ostream(m_buffer) << getAndSerializeWorkItem();
+                boost::beast::ostream(m_out_buffer) << getAndSerializeWorkItem();
             }
                 return;
 
@@ -600,7 +607,7 @@ private:
                     throw std::runtime_error(
                             "async_websocket_server_session::process_request(): Returned payload is unprocessed");
                 }
-                boost::beast::ostream(m_buffer) << getAndSerializeWorkItem();
+                boost::beast::ostream(m_out_buffer) << getAndSerializeWorkItem();
             }
                 return;
 
@@ -644,7 +651,8 @@ private:
     command_container m_command_container{payload_command::NONE,
                                           nullptr}; ///< Holds the current command and payload (if any)
 
-    beast::flat_buffer m_buffer;
+    beast::flat_buffer m_out_buffer;
+    beast::flat_buffer m_in_buffer;
 
     //--------------------------------------------------------------------------
 };
@@ -656,10 +664,6 @@ private:
 class async_websocket_server final
     : public std::enable_shared_from_this<async_websocket_server>
 {
-    // --------------------------------------------------------------
-    // Simplify usage of namespaces
-    using error_code = boost::system::error_code;
-
 public:
     // --------------------------------------------------------------
     // Deleted default constructor, copy-/move-constructors and assignment operators.
@@ -754,7 +758,6 @@ public:
             case payload_type::command: { // This is a severe error
                 throw std::runtime_error(R"(async_websocket_server::run(): Got invalid payload_type "command")");
             }
-                break;
 
                 //------------------------------------------------
         }
@@ -818,7 +821,8 @@ private:
             std::make_shared<async_websocket_server_session>(
                     std::move(socket),
                     [this](payload_base *&plb_ptr) -> bool { return this->getNextPayloadItem(plb_ptr); },
-                    [this]() -> bool { return this->server_stopped(); }, [this](bool sign_on) {
+                    [this]() -> bool { return this->server_stopped(); },
+                    [this](bool sign_on) {
                         if (sign_on) {
                             this->m_n_active_sessions++;
                         } else {
