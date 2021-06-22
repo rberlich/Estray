@@ -70,7 +70,7 @@ using ENUMBASETYPE = unsigned int;
 
 /** @brief Ids of the allowed commands for the Evaluator protocol */
 enum class payload_command : ENUMBASETYPE {
-    GETDATA = 0, NODATA = 1, COMPUTE = 2, RESULT = 3, ERROR = 4, NONE = 5
+    GETDATA = 0, NODATA = 1, COMPUTE = 2, RESULT = 3, ERROR = 4, TERMINATE = 5, NONE = 6
 };
 
 

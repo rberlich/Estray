@@ -58,6 +58,7 @@
 
 // Boost headers go here
 #include <boost/spirit/include/qi.hpp>
+#include <boost/asio/thread_pool.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/rfc6455.hpp>
@@ -65,7 +66,7 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/function.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/random.hpp>
 #include <boost/archive/xml_oarchive.hpp>
 #include <boost/archive/xml_iarchive.hpp>
@@ -137,10 +138,10 @@ public:
     //--------------------------------------------------------------------------
 
     async_websocket_client(
-        std::string address, unsigned short port
+        std::string address
+        , unsigned short port
     )
-        : m_io_context{2}
-        , m_address{std::move(address)}
+        : m_address{std::move(address)}
         , m_port{port}
     {
         // Set the auto_fragment option, so control frames are delivered timely
@@ -154,7 +155,7 @@ public:
     //--------------------------------------------------------------------------
 
     ~async_websocket_client() {
-        std::cout << "Processed " << m_package_counter << " packages" << std::endl;
+        std::cout << "Processed a total of " << m_package_counter << " packages" << std::endl;
     }
 
 
@@ -172,19 +173,13 @@ public:
                         &async_websocket_client::when_resolved,
                         shared_from_this()));
 
-        // We need an additional thread for the processing of incoming work items
-        std::thread processing_thread(
-                [this]() {
-                    m_io_context.run();
-                }
-        );
-
         // This call will block until no more work remains in the ASIO work queue
         m_io_context.run();
 
         // When run() has finished, close all outstanding connections
         std::cout << "async_websocket_client::run(): Closing down remaining connections" << std::endl;
-        processing_thread.join();
+        m_pool.stop();
+        m_pool.join();
 
         // Close the websocket
         m_ws.close(websocket::close_code::normal);
@@ -252,7 +247,7 @@ private:
     void
     async_start_write(const std::string &message) {
         // Prepare the buffer for the next iteration
-        m_out_buffer.clear();
+        m_out_buffer.consume(m_out_buffer.size());
 
         // Fill it with the message
         beast::ostream(m_out_buffer) << message;
@@ -305,7 +300,7 @@ private:
     ) {
         boost::ignore_unused(bytes_transferred);
 
-        if (ec)
+        if (ec || m_stop)
             return fail(ec, "when_written");
 
         // We are done. Further writing is triggered by the task processing
@@ -320,13 +315,14 @@ private:
     {
         boost::ignore_unused(bytes_transferred);
 
-        if (ec)
+        if (ec || m_stop)
             return fail(ec, "when_read");
 
         // Start asynchronous processing of the work item.
         // The next write-operation is initiated from process_request().
-        m_io_context.post(
-                beast::bind_front_handler(
+        boost::asio::post(
+                m_pool
+                , beast::bind_front_handler(
                         &async_websocket_client::process_request,
                         shared_from_this(),
                         std::move(beast::buffers_to_string(m_in_buffer.data()))
@@ -336,13 +332,13 @@ private:
         m_in_buffer.consume(m_in_buffer.size()); // We can clear the old message
 
         // Start a new read cycle so we may react to control frames
-        // (in particular ping and close)
+        // (in particular ping and close) and process responses
         async_start_read();
     }
 
     //--------------------------------------------------------------------------
     void
-    process_request(std::string in_data) {
+    process_request(std::string && in_data) {
         // De-serialize the object
         m_command_container.from_string(in_data);
 
@@ -372,6 +368,10 @@ private:
             }
                 break;
 
+            case payload_command::TERMINATE: // We have been asked to stop
+                m_stop = true;
+                return;
+
             default: {
                 throw std::runtime_error(
                         "async_websocket_client::process_request(): Got unknown or invalid command " +
@@ -384,7 +384,9 @@ private:
         async_start_write(m_command_container.to_string());
 
         // Update the package counter so we get an idea how many packages we have processed.
-        m_package_counter++;
+        if((++m_package_counter)%10==0) {
+            std::cout << "Processed " << m_package_counter << " packages" << std::endl;
+        }
     }
 
     //--------------------------------------------------------------------------
@@ -407,7 +409,16 @@ private:
     command_container m_command_container{payload_command::NONE,
                                           nullptr}; ///< Holds the current command and payload (if any)
 
+    /**
+     * We use Boost.Asio's built-in thread pool to execute the processing. This way we do not have to rely
+     * on strands for the synchronisation of our async read and write calls. As they use the same io_context
+     * and the processing is done on another io_context object, reads and writes are executed using an
+     * implicit strand
+     */
+    boost::asio::thread_pool m_pool{1};
+
     std::atomic<std::uint32_t> m_package_counter{0};
+    std::atomic<bool> m_stop{false};
 
     //--------------------------------------------------------------------------
 };
